@@ -1,49 +1,58 @@
-import asyncio
-import websockets
-import json
-import os
-import signal
-from getpass import getpass
-from .config import load_config
+import asyncio  # Module for asynchronous programming
+import websockets  # WebSocket client and server library for asyncio
+import json  # Module for JSON operations
+import os  # Module for interacting with the operating system
+import signal  # Module for signal handling
+from getpass import getpass  # Function to securely get a password from the user
+from .config import load_config  # Importing function to load configuration
 
 class MginDBCLI:
     def __init__(self):
-        self.loop = None
-        self.websocket = None
+        # Initialize event loop and websocket attributes
+        self.loop = None  # Event loop placeholder
+        self.websocket = None  # WebSocket connection placeholder
 
     def color_text(self, text, color_code):
+        """Returns text formatted with the given ANSI color code."""
         return f"\033[{color_code}m{text}\033[0m"
 
     def red(self, text):
+        """Returns text formatted in red color."""
         return self.color_text(text, 31)
 
     def green(self, text):
+        """Returns text formatted in green color."""
         return self.color_text(text, 32)
 
     def blue(self, text):
+        """Returns text formatted in blue color."""
         return self.color_text(text, 34)
 
     def cyan(self, text):
+        """Returns text formatted in cyan color."""
         return self.color_text(text, 36)
 
     def yellow(self, text):
+        """Returns text formatted in yellow color."""
         return self.color_text(text, 33)
 
     def magenta(self, text):
+        """Returns text formatted in magenta color."""
         return f"\033[35m{text}\033[0m"
 
     def print_table(self, data):
+        """Prints data in a table format."""
         if isinstance(data, list):
             if all(isinstance(item, dict) for item in data):
-                self.print_section(data)
+                self.print_section(data)  # Print section if all items are dictionaries
             else:
                 for item in data:
-                    self.print_table(item)
+                    self.print_table(item)  # Recursively print table for each item
         elif isinstance(data, dict):
             for group_key, entries in data.items():
                 print(f"\nGroup: {group_key}")
                 if isinstance(entries, list) and all(isinstance(item, dict) for item in entries):
-                    self.print_section(entries)
+                    self.print_section(entries)  # Print section if all entries are dictionaries
                 else:
                     print("Data format is not as expected.")
         else:
@@ -51,6 +60,7 @@ class MginDBCLI:
         print('')
 
     def print_section(self, sections):
+        """Prints a section of data."""
         if not sections:
             print("No data available.")
             return
@@ -66,9 +76,11 @@ class MginDBCLI:
             print(" | ".join(values))
 
     def calculate_column_widths(self, sections, headers):
+        """Calculates the width of each column."""
         return {h: max(len(h), *(len(self.format_cell(item.get(h, ""))) for item in sections)) for h in headers}
 
     def print_headers(self, headers, column_widths):
+        """Prints the headers of the table."""
         print('')
         header_line = " | ".join(h.center(column_widths[h]) for h in headers)
         separator_line = "-+-".join("-" * column_widths[h] for h in headers)
@@ -76,9 +88,11 @@ class MginDBCLI:
         print(separator_line)
 
     def format_cell(self, value):
+        """Formats a cell value."""
         return str(value)
 
     def print_single_entry(self, entry):
+        """Prints a single entry."""
         if isinstance(entry, dict):
             headers = sorted(entry.keys())
             column_widths = self.calculate_column_widths([entry], headers)
@@ -91,16 +105,18 @@ class MginDBCLI:
             print("Invalid entry type")
 
     def format_response(self, response, use_table_format):
+        """Formats the server response."""
         try:
             json_response = json.loads(response)
             if use_table_format:
-                self.print_table(json_response)
+                self.print_table(json_response)  # Print response in table format
             else:
-                print(json.dumps(json_response, indent=2))
+                print(json.dumps(json_response, indent=2))  # Print formatted JSON response
         except json.JSONDecodeError:
-            print(response)
+            print(response)  # Print raw response if JSON decoding fails
 
     async def cli_session(self, uri):
+        """Handles the CLI session."""
         print('')
         username = input(self.red("Enter username (leave blank if not required): "))
         password = getpass(self.red("Enter password (leave blank if not required): "))
@@ -108,9 +124,9 @@ class MginDBCLI:
         print('')
         print(self.yellow("Connecting to server..."))
         try:
-            self.websocket = await websockets.connect(uri, ping_interval=30, ping_timeout=10)
+            self.websocket = await websockets.connect(uri, ping_interval=30, ping_timeout=10)  # Connect to the WebSocket server
             auth_data = {'username': username, 'password': password}
-            await self.websocket.send(json.dumps(auth_data))
+            await self.websocket.send(json.dumps(auth_data))  # Send authentication data
 
             auth_response = await self.websocket.recv()
             print(self.yellow(auth_response))
@@ -131,12 +147,12 @@ class MginDBCLI:
             print('')
             while True:
                 try:
-                    user_input = await asyncio.wait_for(asyncio.to_thread(input, self.yellow('MginDB> ')), timeout=600)
+                    user_input = await asyncio.wait_for(asyncio.to_thread(input, self.yellow('MginDB> ')), timeout=600)  # Get user input with timeout
                     if user_input.lower() == 'exit':
                         print(self.yellow('Exiting CLI.'))
                         break
                     elif user_input.lower() == 'clear':
-                        os.system('cls' if os.name == 'nt' else 'clear')
+                        os.system('cls' if os.name == 'nt' else 'clear')  # Clear the screen
                         continue
 
                     use_table_format = '-f' in user_input
@@ -146,11 +162,11 @@ class MginDBCLI:
                     if user_input.strip():
                         if user_input.strip().startswith('{') and ':' in user_input:
                             command_data = json.loads(user_input)
-                            await self.websocket.send(json.dumps(command_data))
+                            await self.websocket.send(json.dumps(command_data))  # Send command as JSON
                         else:
-                            await self.websocket.send(user_input)
+                            await self.websocket.send(user_input)  # Send command as raw text
                     else:
-                        await self.websocket.ping()
+                        await self.websocket.ping()  # Send a ping if input is empty
 
                     response = await self.websocket.recv()
                     self.format_response(response, use_table_format)
@@ -172,35 +188,37 @@ class MginDBCLI:
             print("Keyboard interrupt, Shutting down client...")
         finally:
             if self.websocket:
-                await self.websocket.close()
+                await self.websocket.close()  # Close the WebSocket connection
 
     async def shutdown(self, signal=None):
+        """Handles shutdown of the client."""
         if signal:
             print(f"Received exit signal {signal.name}...")
         tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
 
         for task in tasks:
-            task.cancel()
+            task.cancel()  # Cancel all tasks
 
         await asyncio.gather(*tasks, return_exceptions=True)
         await asyncio.sleep(0.1)
 
     def run(self):
+        """Runs the CLI."""
         try:
-            config = load_config()
-            uri = f"ws://{config.get('HOST')}:{config.get('PORT')}"
-            self.loop = asyncio.new_event_loop()
+            config = load_config()  # Load configuration
+            uri = f"ws://{config.get('HOST')}:{config.get('PORT')}"  # Construct WebSocket URI
+            self.loop = asyncio.new_event_loop()  # Create a new event loop
             asyncio.set_event_loop(self.loop)
             for s in (signal.SIGINT, signal.SIGTERM):
                 self.loop.add_signal_handler(
-                    s, lambda s=s: asyncio.create_task(self.shutdown(signal=s)))
-            self.loop.run_until_complete(self.cli_session(uri))
+                    s, lambda s=s: asyncio.create_task(self.shutdown(signal=s)))  # Add signal handlers for shutdown
+            self.loop.run_until_complete(self.cli_session(uri))  # Run the CLI session
         except Exception as e:
             print(f"An error occurred: {e}")
         finally:
-            self.loop.run_until_complete(self.shutdown())
-            self.loop.close()
+            self.loop.run_until_complete(self.shutdown())  # Shutdown the client
+            self.loop.close()  # Close the event loop
             print("Client closed, you can press enter to fully exit...")
 
 if __name__ == '__main__':
-    MginDBCLI().run()
+    MginDBCLI().run()  # Run the MginDBCLI if this script is executed directly

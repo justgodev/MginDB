@@ -1,43 +1,47 @@
-from .app_state import AppState
-import os
-import shutil
-import datetime
-import json
-from .constants import DATA_FILE, INDICES_FILE, SCHEDULER_FILE, BACKUP_DIR
+# Import necessary modules and classes
+from .app_state import AppState  # Application state management
+import os  # Module for interacting with the operating system
+import shutil  # Module for file operations
+import datetime  # Module for date and time manipulation
+import json  # Module for JSON operations
+from .constants import DATA_FILE, INDICES_FILE, SCHEDULER_FILE, BACKUP_DIR  # Import constants
 
 from .data_manager import DataManager  # Importing data management functions from data_manager module
-data_manager = DataManager()
+data_manager = DataManager()  # Instantiate DataManager
 
 from .indices_manager import IndicesManager  # Importing function to load indices
-indices_manager = IndicesManager() # Importing index management functions from indices_manager module
+indices_manager = IndicesManager()  # Instantiate IndicesManager
 
 from .sharding_manager import ShardingManager  # Importing data management functions from sharding_manager module
-sharding_manager = ShardingManager()
+sharding_manager = ShardingManager()  # Instantiate ShardingManager
 
 class BackupManager:
     def __init__(self):
-        self.app_state = AppState()
-        self.data_file = DATA_FILE
-        self.indice_file = INDICES_FILE
-        self.scheduler_file = SCHEDULER_FILE
+        # Initialize application state and file paths
+        self.app_state = AppState()  # Manages application state
+        self.data_file = DATA_FILE  # Path to the data file
+        self.indice_file = INDICES_FILE  # Path to the indices file
+        self.scheduler_file = SCHEDULER_FILE  # Path to the scheduler file
 
     def handle_backup_command(self, args):
+        """Handles backup-related commands based on the provided arguments."""
         if args.upper() == 'LIST':
-            return self.backups_list()
+            return self.backups_list()  # List all backup files
         elif args.upper().startswith('RESTORE'):
             filename = args.split(maxsplit=1)[1] if len(args.split(maxsplit=1)) > 1 else ""
-            return self.backup_restore(filename)
+            return self.backup_restore(filename)  # Restore a specific backup file
         elif args.upper().startswith('DEL'):
             subcommand = args.split(maxsplit=1)[1].upper()
             if subcommand == 'ALL':
-                return self.backup_delete_all_files()
+                return self.backup_delete_all_files()  # Delete all backup files
             else:
                 filename = args.split(maxsplit=1)[1] if len(args.split(maxsplit=1)) > 1 else ""
-                return self.backup_delete_file(filename)
+                return self.backup_delete_file(filename)  # Delete a specific backup file
         else:
-            return self.backup_data()
+            return self.backup_data()  # Perform a backup
 
     def get_latest_backup(self):
+        """Retrieves the latest backup files for data, indices, and scheduler."""
         try:
             backups = [file for file in os.listdir(BACKUP_DIR) if file.endswith('.backup')]
             backups.sort(key=lambda x: datetime.datetime.strptime(x.split('_')[1].split('.')[0], '%Y%m%d%H%M%S'), reverse=True)
@@ -46,9 +50,10 @@ class BackupManager:
             latest_scheduler_backup = next((file for file in backups if file.startswith('scheduler_')), None)
             return latest_data_backup, latest_indices_backup, latest_scheduler_backup
         except FileNotFoundError:
-            return None, None
+            return None, None, None  # Return None if the backup directory is not found
 
     def backups_list(self):
+        """Lists all backup files in the backup directory."""
         try:
             backups = [file for file in os.listdir(BACKUP_DIR) if file.endswith('.backup')]
             backups.sort(key=lambda x: datetime.datetime.strptime(x.split('_')[1].split('.')[0], '%Y%m%d%H%M%S'), reverse=True)
@@ -66,6 +71,7 @@ class BackupManager:
             return json.dumps([{"message": "Backup directory not found."}])  # Return JSON string with a single element indicating the message
 
     def backup_data(self):
+        """Performs a backup of data, indices, and scheduler files."""
         current_time = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
         results = []  # List to keep track of backup messages for each type
 
@@ -106,14 +112,15 @@ class BackupManager:
                 results.append(f"Failed to backup scheduler file: {e}")
 
         if not results:
-            return "No files to backup or data is empty."
+            return "No files to backup or data is empty."  # Return message if no files were backed up
         else:
-            return '\n'.join(results)
+            return '\n'.join(results)  # Join and return backup messages
 
     def backup_restore(self, filename):
-        backup_path = os.path.join(BACKUP_DIR, filename)
+        """Restores a backup file based on the provided filename."""
+        backup_path = os.path.join(BACKUP_DIR, filename)  # Construct the full backup file path
         if not os.path.exists(backup_path):
-            return f"ERROR: Backup file {filename} does not exist"
+            return f"ERROR: Backup file {filename} does not exist"  # Return error if the backup file does not exist
 
         if 'data_' in filename:
             target_file = self.data_file
@@ -122,66 +129,67 @@ class BackupManager:
         elif 'scheduler_' in filename:
             target_file = self.scheduler_file
         else:
-            return "ERROR: Unknown file type for restore"
+            return "ERROR: Unknown file type for restore"  # Return error if the file type is unknown
 
-        shutil.copyfile(backup_path, target_file)
+        shutil.copyfile(backup_path, target_file)  # Copy the backup file to the target file
 
+        # Reload data or indices if applicable
         if target_file == self.data_file:
-            data_manager.load_data()
+            data_manager.load_data()  # Reload data
         elif target_file == self.indice_file:
-            indices_manager.load_indices()
+            indices_manager.load_indices()  # Reload indices
 
-        return "Restore completed successfully. Data reloaded."
+        return "Restore completed successfully. Data reloaded."  # Return success message
 
     async def backup_rollback(self):
+        """Rolls back to the latest backup files."""
         # Find the latest backups for data and indices
         latest_data_backup, latest_indices_backup, latest_scheduler_backup = self.get_latest_backup()
 
         if not latest_data_backup or not latest_indices_backup or not latest_scheduler_backup:
-            #print("ERROR: No backup files available for rollback.")
-            return "ERROR: No backup files available for rollback."
+            return "ERROR: No backup files available for rollback."  # Return error if no backup files are found
 
         # Restore the latest backups
         data_restore_result = self.backup_restore(latest_data_backup)
         indices_restore_result = self.backup_restore(latest_indices_backup)
         scheduler_restore_result = self.backup_restore(latest_scheduler_backup)
 
-        #print(f"Rollback results - Data: {data_restore_result}, Indices: {indices_restore_result}, Scheduler: {scheduler_restore_result}")
-        return f"Rollback completed - Data: {data_restore_result}, Indices: {indices_restore_result}"
+        return f"Rollback completed - Data: {data_restore_result}, Indices: {indices_restore_result}"  # Return rollback results
 
     def backup_delete_file(self, filename):
-        backup_path = os.path.join(BACKUP_DIR, filename)
+        """Deletes a specific backup file."""
+        backup_path = os.path.join(BACKUP_DIR, filename)  # Construct the full backup file path
         if os.path.exists(backup_path):
-            os.remove(backup_path)
-            return f"Backup file {filename} has been deleted."
+            os.remove(backup_path)  # Remove the backup file
+            return f"Backup file {filename} has been deleted."  # Return success message
         else:
-            return f"Backup file {filename} does not exist."
+            return f"Backup file {filename} does not exist."  # Return error message if file does not exist
 
     async def backup_delete_all_files(self):
-        host = AppState().config_store.get('HOST')
-        port = AppState().config_store.get('PORT')
+        """Deletes all backup files, including those on remote shards if sharding is enabled."""
+        host = AppState().config_store.get('HOST')  # Get host from config
+        port = AppState().config_store.get('PORT')  # Get port from config
 
         # Perform local deletion
         deleted_files = 0
         try:
             for file in os.listdir(BACKUP_DIR):
                 if file.endswith('.backup'):
-                    os.remove(os.path.join(BACKUP_DIR, file))
-                    deleted_files += 1
+                    os.remove(os.path.join(BACKUP_DIR, file))  # Remove the backup file
+                    deleted_files += 1  # Increment deleted files counter
         except FileNotFoundError:
-            return "Backup directory not found."
+            return "Backup directory not found."  # Return error if backup directory is not found
 
         # Check if sharding is enabled and we are in MASTER mode
         if await sharding_manager.has_sharding_is_sharding_master():
-            shards = AppState().config_store.get('SHARDS')
-            shard_uris = [f"{shard}:{port}" for shard in shards if shard != host]
+            shards = AppState().config_store.get('SHARDS')  # Get list of shards from config
+            shard_uris = [f"{shard}:{port}" for shard in shards if shard != host]  # Create URIs for shards
 
             # Broadcast DELETE BACKUP to all remote shards
             results = await sharding_manager.broadcast_query('BACKUP DEL ALL', shard_uris)
-            #print("Delete backup results from remote shards:", results)
             deleted_files += sum(int(result.split()[0]) for result in results if "backup files have been deleted." in result)
 
         if deleted_files > 0:
-            return f"{deleted_files} backup files have been deleted."
+            return f"{deleted_files} backup files have been deleted."  # Return success message with count
         else:
-            return "No backup files found to delete."
+            return "No backup files found to delete."  # Return message if no files were deleted

@@ -1,96 +1,97 @@
 # Import necessary modules and classes
-from .app_state import AppState
-from .connection_handler import asyncio, websockets, signal, stop_event, signal_handler
-from .websocket_handler import handle_websocket
-from .config import load_config
-from .license_manager import LicenseManager
-from .update_manager import UpdateManager
-from .scheduler import SchedulerManager
-from .data_manager import DataManager
-from .indices_manager import IndicesManager
-from .replication_manager import ReplicationManager
+from .app_state import AppState  # Application state management
+from .connection_handler import asyncio, websockets, signal, stop_event, signal_handler  # Connection and signal handling
+from .websocket_handler import handle_websocket  # WebSocket handling
+from .config import load_config  # Configuration loading
+from .license_manager import LicenseManager  # License management
+from .update_manager import UpdateManager  # Update management
+from .scheduler import SchedulerManager  # Scheduler management
+from .data_manager import DataManager  # Data management
+from .indices_manager import IndicesManager  # Indices management
+from .replication_manager import ReplicationManager  # Replication management
 
 class ServerManager:
     def __init__(self):
-        self.app_state = AppState()
-        self.license_manager = LicenseManager()
-        self.updater = UpdateManager()
-        self.scheduler_manager = SchedulerManager()
-        self.data_manager = DataManager()
-        self.indices_manager = IndicesManager()
-        self.replication_manager = ReplicationManager()
+        # Initialize application state and various managers
+        self.app_state = AppState()  # Manages application state
+        self.license_manager = LicenseManager()  # Manages licensing
+        self.updater = UpdateManager()  # Manages updates
+        self.scheduler_manager = SchedulerManager()  # Manages the scheduler
+        self.data_manager = DataManager()  # Manages data
+        self.indices_manager = IndicesManager()  # Manages indices
+        self.replication_manager = ReplicationManager()  # Manages replication
 
     async def start_server(self):
         """Asynchronous function to start the server."""
-        await self.main()
+        await self.main()  # Call the main function to start the server
 
     async def main(self):
         """Main function to initialize and start the server components."""
         try:
             # Load configuration
-            load_config()
-            print("Loading config...")
+            load_config()  # Load server configuration
+            print("Loading config...")  # Print message indicating config loading
 
             # Display MginDB version
-            print(f"MginDB version: {self.app_state.version}")
+            print(f"MginDB version: {self.app_state.version}")  # Print the current version of MginDB
 
             # Check and install updates
-            if self.updater.has_auto_update():
-                latest_version, message = self.updater.check_update()
-                print(message)
-                if latest_version:
-                    self.updater.install_update(latest_version)
+            if self.updater.has_auto_update():  # Check if auto-update is enabled
+                latest_version, message = self.updater.check_update()  # Check for updates
+                print(message)  # Print the update message
+                if latest_version:  # If a new version is available
+                    self.updater.install_update(latest_version)  # Install the update
 
             # Load scheduler
-            self.scheduler_manager.load_scheduler()
-            print("Loading scheduler...")
+            self.scheduler_manager.load_scheduler()  # Load the scheduler
+            print("Loading scheduler...")  # Print message indicating scheduler loading
 
             # Load data
-            self.data_manager.load_data()
-            print("Loading data...")
+            self.data_manager.load_data()  # Load data
+            print("Loading data...")  # Print message indicating data loading
 
             # Load indices
-            self.indices_manager.load_indices()
-            print("Loading indices...")
+            self.indices_manager.load_indices()  # Load indices
+            print("Loading indices...")  # Print message indicating indices loading
 
             # Setup replication
-            if await self.replication_manager.has_replication_is_replication_master():
-                print("Activating master replication...")
+            if await self.replication_manager.has_replication_is_replication_master():  # Check if this instance is a replication master
+                print("Activating master replication...")  # Print message for master replication activation
 
-            if await self.replication_manager.has_replication_is_replication_slave():
-                print("Activating slave replication...")
-                await self.replication_manager.request_full_replication()
+            if await self.replication_manager.has_replication_is_replication_slave():  # Check if this instance is a replication slave
+                print("Activating slave replication...")  # Print message for slave replication activation
+                await self.replication_manager.request_full_replication()  # Request full replication from the master
 
             # Start scheduler if active
-            if self.scheduler_manager.is_scheduler_active():
-                print("Starting scheduler...")
-                await self.scheduler_manager.start_scheduler()
+            if self.scheduler_manager.is_scheduler_active():  # Check if the scheduler is active
+                print("Starting scheduler...")  # Print message indicating scheduler starting
+                await self.scheduler_manager.start_scheduler()  # Start the scheduler
 
             # Start WebSocket server
-            print("Starting websocket...")
-            host = self.app_state.config_store.get('HOST')
-            port = self.app_state.config_store.get('PORT')
-            await websockets.serve(handle_websocket, host, port)
-            print(f"WebSocket serving on {host}:{port}")
+            print("Starting websocket...")  # Print message indicating WebSocket starting
+            host = self.app_state.config_store.get('HOST')  # Get host from config
+            port = self.app_state.config_store.get('PORT')  # Get port from config
+            await websockets.serve(handle_websocket, host, port)  # Start the WebSocket server
+            print(f"WebSocket serving on {host}:{port}")  # Print message with WebSocket server details
 
             # Wait for stop signal
             try:
-                await stop_event.wait()
+                await stop_event.wait()  # Wait for the stop event
             except Exception as e:
-                print(e)
+                print(e)  # Print any exceptions that occur
 
         except Exception as e:
-            print(f"Failed to start MginDB: {e}")
+            print(f"Failed to start MginDB: {e}")  # Print error message if server fails to start
 
 if __name__ == '__main__':
     # Register signal handlers for graceful shutdown
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)  # Handle SIGINT signal
+    signal.signal(signal.SIGTERM, signal_handler)  # Handle SIGTERM signal
 
     try:
-        server_manager = ServerManager()
+        server_manager = ServerManager()  # Create an instance of ServerManager
         asyncio.run(server_manager.main())  # Run the main function asynchronously
     except (KeyboardInterrupt, ConnectionAbortedError):
-        pass
+        pass  # Ignore keyboard interrupt and connection aborted errors
     except Exception as e:
-        print(f"Failed to start MginDB: {e}")
+        print(f"Failed to start MginDB: {e}")  # Print error message if server fails to start

@@ -1,25 +1,28 @@
 class AppState:
-    _instance = None
+    _instance = None  # Class-level attribute to hold the singleton instance
 
     def __new__(cls):
+        """Ensures that only one instance of AppState is created (singleton pattern)."""
         if cls._instance is None:
+            # Create a new instance if one does not already exist
             cls._instance = super(AppState, cls).__new__(cls)
-            cls.websocket = None
-            cls.mgindb_url = 'https://mgindb.com'
-            cls.version = '0.1.0'
-            cls.license = None
-            cls.auth_data = {}
-            cls.scheduler_task = None
-            cls.scheduled_tasks = {}
-            cls.sessions = {}
-            cls.config_store = {}
-            cls.data_store = {}
-            cls.expires_store = {}
-            cls.indices = {}
-            cls.monitor_subscribers = set()
-            cls.sub_pub = {}
+            # Initialize attributes
+            cls.websocket = None  # WebSocket connection placeholder
+            cls.mgindb_url = 'https://mgindb.com'  # URL for MginDB
+            cls.version = '0.1.0'  # Version of the application
+            cls.license = None  # License information
+            cls.auth_data = {}  # Authentication data
+            cls.scheduler_task = None  # Current scheduler task
+            cls.scheduled_tasks = {}  # Dictionary of scheduled tasks
+            cls.sessions = {}  # Active sessions
+            cls.config_store = {}  # Configuration store
+            cls.data_store = {}  # Main data store
+            cls.expires_store = {}  # Expiry times for data entries
+            cls.indices = {}  # Indices for data
+            cls.monitor_subscribers = set()  # Set of monitor subscribers
+            cls.sub_pub = {}  # Publish/subscribe dictionary
 
             # Changes tracking
-            cls.data_has_changed = False
-            cls.indices_has_changed = False
-        return cls._instance
+            cls.data_has_changed = False  # Flag to track data changes
+            cls.indices_has_changed = False  # Flag to track indices changes
+        return cls._instance  # Return the singleton instance
