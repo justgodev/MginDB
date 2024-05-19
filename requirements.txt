@@ -1,0 +1,10 @@
+build
+setuptools
+click
+asyncio
+nest_asyncio
+websockets
+uuid
+croniter
+prompt_toolkit
+requests

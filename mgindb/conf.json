@@ -1,0 +1,24 @@
+{
+    "INSTANCE_UUID": "e80ada5d-d70d-49e5-ae6c-853068d934c0",
+    "HOST": "127.0.0.1",
+    "PORT": "6446",
+    "USERNAME": "",
+    "PASSWORD": "",
+    "AUTO_UPDATE": "1",
+    "SAVE_ON_FILE_INTERVAL": "15",
+    "BACKUP_ON_SHUTDOWN": "0",
+    "SCHEDULER": "1",
+    "REPLICATION": "1",
+    "REPLICATION_TYPE": "MASTER",
+    "REPLICATION_MASTER": "",
+    "REPLICATION_SLAVES": [
+        "10.0.0.251:6447"
+    ],
+    "SHARDING_TYPE": "MASTER",
+    "SHARDING": "0",
+    "SHARDING_BATCH_SIZE": "50",
+    "SHARDS": [
+        "127.0.0.1",
+        "10.0.0.251"
+    ]
+}

@@ -1,0 +1,14 @@
+.DS_Store
+__pycache__/
+dist/
+mgindb.egg-info/
+mginDB.sublime-project
+mginDB.sublime-workspace
+generate_checksum.py
+venv/
+web/
+assets/
+mgindb/.DS_Store
+mgindb/__pycache__
+mgindb/backup
+mgindb/data
