@@ -24,7 +24,19 @@ class BackupManager:
         self.scheduler_file = SCHEDULER_FILE  # Path to the scheduler file
 
     def handle_backup_command(self, args):
-        """Handles backup-related commands based on the provided arguments."""
+        """
+        Handles backup-related commands based on the provided arguments.
+
+        This function processes backup commands such as listing backups, restoring a backup,
+        deleting a backup, and performing a new backup. The specific command is determined by
+        the provided arguments.
+
+        Args:
+            args (str): The backup command and its arguments.
+
+        Returns:
+            str: The result of the backup command.
+        """
         if args.upper() == 'LIST':
             return self.backups_list()  # List all backup files
         elif args.upper().startswith('RESTORE'):
@@ -41,7 +53,15 @@ class BackupManager:
             return self.backup_data()  # Perform a backup
 
     def get_latest_backup(self):
-        """Retrieves the latest backup files for data, indices, and scheduler."""
+        """
+        Retrieves the latest backup files for data, indices, and scheduler.
+
+        This function searches the backup directory for the latest backup files
+        for data, indices, and scheduler based on their filenames and timestamps.
+
+        Returns:
+            tuple: The filenames of the latest data, indices, and scheduler backups.
+        """
         try:
             backups = [file for file in os.listdir(BACKUP_DIR) if file.endswith('.backup')]
             backups.sort(key=lambda x: datetime.datetime.strptime(x.split('_')[1].split('.')[0], '%Y%m%d%H%M%S'), reverse=True)
@@ -53,7 +73,15 @@ class BackupManager:
             return None, None, None  # Return None if the backup directory is not found
 
     def backups_list(self):
-        """Lists all backup files in the backup directory."""
+        """
+        Lists all backup files in the backup directory.
+
+        This function generates a list of all backup files in the backup directory,
+        including their filenames and the dates they were created.
+
+        Returns:
+            str: A JSON string containing the list of backup files and their dates.
+        """
         try:
             backups = [file for file in os.listdir(BACKUP_DIR) if file.endswith('.backup')]
             backups.sort(key=lambda x: datetime.datetime.strptime(x.split('_')[1].split('.')[0], '%Y%m%d%H%M%S'), reverse=True)
@@ -71,7 +99,16 @@ class BackupManager:
             return json.dumps([{"message": "Backup directory not found."}])  # Return JSON string with a single element indicating the message
 
     def backup_data(self):
-        """Performs a backup of data, indices, and scheduler files."""
+        """
+        Performs a backup of data, indices, and scheduler files.
+
+        This function creates backups of the data, indices, and scheduler files,
+        storing them in the backup directory with filenames that include the
+        current timestamp.
+
+        Returns:
+            str: A message indicating the result of the backup operation.
+        """
         current_time = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
         results = []  # List to keep track of backup messages for each type
 
@@ -88,7 +125,7 @@ class BackupManager:
             except IOError as e:
                 results.append(f"Failed to backup data file: {e}")
 
-        # Similar conversion for indices and scheduler
+        # Backup indices file if it exists and is not empty
         if os.path.exists(self.indice_file) and self.app_state.indices:
             backup_filename_indices = f"indices_{current_time}.backup"
             backup_path_indices = os.path.join(BACKUP_DIR, backup_filename_indices)
@@ -100,6 +137,7 @@ class BackupManager:
             except IOError as e:
                 results.append(f"Failed to backup indices file: {e}")
 
+        # Backup scheduler file if it exists and is not empty
         if os.path.exists(self.scheduler_file) and self.app_state.scheduled_tasks:
             backup_filename_scheduler = f"scheduler_{current_time}.backup"
             backup_path_scheduler = os.path.join(BACKUP_DIR, backup_filename_scheduler)
@@ -117,11 +155,24 @@ class BackupManager:
             return '\n'.join(results)  # Join and return backup messages
 
     def backup_restore(self, filename):
-        """Restores a backup file based on the provided filename."""
+        """
+        Restores a backup file based on the provided filename.
+
+        This function restores a backup file (data, indices, or scheduler) by copying
+        it from the backup directory to its original location and reloading the data
+        if applicable.
+
+        Args:
+            filename (str): The name of the backup file to restore.
+
+        Returns:
+            str: A message indicating the result of the restore operation.
+        """
         backup_path = os.path.join(BACKUP_DIR, filename)  # Construct the full backup file path
         if not os.path.exists(backup_path):
             return f"ERROR: Backup file {filename} does not exist"  # Return error if the backup file does not exist
 
+        # Determine the target file based on the backup filename
         if 'data_' in filename:
             target_file = self.data_file
         elif 'indices_' in filename:
@@ -142,8 +193,16 @@ class BackupManager:
         return "Restore completed successfully. Data reloaded."  # Return success message
 
     async def backup_rollback(self):
-        """Rolls back to the latest backup files."""
-        # Find the latest backups for data and indices
+        """
+        Rolls back to the latest backup files.
+
+        This function restores the latest backups for data, indices, and scheduler files,
+        effectively rolling back the application state to the last known good state.
+
+        Returns:
+            str: A message indicating the result of the rollback operation.
+        """
+        # Find the latest backups for data, indices, and scheduler
         latest_data_backup, latest_indices_backup, latest_scheduler_backup = self.get_latest_backup()
 
         if not latest_data_backup or not latest_indices_backup or not latest_scheduler_backup:
@@ -154,10 +213,20 @@ class BackupManager:
         indices_restore_result = self.backup_restore(latest_indices_backup)
         scheduler_restore_result = self.backup_restore(latest_scheduler_backup)
 
-        return f"Rollback completed - Data: {data_restore_result}, Indices: {indices_restore_result}"  # Return rollback results
+        return f"Rollback completed - Data: {data_restore_result}, Indices: {indices_restore_result}, Scheduler: {scheduler_restore_result}"  # Return rollback results
 
     def backup_delete_file(self, filename):
-        """Deletes a specific backup file."""
+        """
+        Deletes a specific backup file.
+
+        This function deletes a specific backup file from the backup directory.
+
+        Args:
+            filename (str): The name of the backup file to delete.
+
+        Returns:
+            str: A message indicating the result of the delete operation.
+        """
         backup_path = os.path.join(BACKUP_DIR, filename)  # Construct the full backup file path
         if os.path.exists(backup_path):
             os.remove(backup_path)  # Remove the backup file
@@ -166,7 +235,15 @@ class BackupManager:
             return f"Backup file {filename} does not exist."  # Return error message if file does not exist
 
     async def backup_delete_all_files(self):
-        """Deletes all backup files, including those on remote shards if sharding is enabled."""
+        """
+        Deletes all backup files, including those on remote shards if sharding is enabled.
+
+        This function deletes all backup files from the backup directory. If sharding is enabled
+        and the current instance is a sharding master, it also deletes backup files from remote shards.
+
+        Returns:
+            str: A message indicating the result of the delete operation.
+        """
         host = AppState().config_store.get('HOST')  # Get host from config
         port = AppState().config_store.get('PORT')  # Get port from config
 

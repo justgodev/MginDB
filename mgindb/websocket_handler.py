@@ -1,18 +1,21 @@
-import uuid
-import json
-from .app_state import AppState
-from .connection_handler import asyncio, websockets, signal, stop_event, signal_stop
-from .command_processing import CommandProcessor
+import uuid  # Module for generating unique identifiers
+import json  # Module for JSON operations
+from .app_state import AppState  # Importing AppState class from app_state module
+from .connection_handler import asyncio, websockets, signal, stop_event, signal_stop  # Importing necessary functions and classes from connection_handler module
+from .command_processing import CommandProcessor  # Importing CommandProcessor class from command_processing module
 
 class WebSocketManager:
     def __init__(self):
+        """Initialize WebSocketManager with a command processor."""
         self.command_processor = CommandProcessor()
     
     async def handle_websocket(self, websocket, path):
+        """Handle a new WebSocket connection."""
         await WebSocketSession(websocket, self.command_processor).start()
 
 class WebSocketSession:
     def __init__(self, websocket, command_processor):
+        """Initialize WebSocketSession with a WebSocket connection and a command processor."""
         self.websocket = websocket
         self.command_processor = command_processor
         self.sid = str(uuid.uuid4())
@@ -23,6 +26,7 @@ class WebSocketSession:
         AppState().websocket = websocket
 
     async def start(self):
+        """Start the WebSocket session."""
         try:
             await self.authenticate()
             await self.listen_for_messages()
@@ -36,6 +40,11 @@ class WebSocketSession:
             del AppState().sessions[self.sid]
 
     async def authenticate(self):
+        """
+        Authenticate the WebSocket connection.
+
+        This method expects the first message to contain authentication data.
+        """
         expected_username = AppState().config_store.get('USERNAME', '')
         expected_password = AppState().config_store.get('PASSWORD', '')
 
@@ -52,6 +61,17 @@ class WebSocketSession:
                 break
 
     async def check_credentials(self, message, expected_username, expected_password):
+        """
+        Check the provided credentials against expected values.
+
+        Args:
+            message (str): The received message containing authentication data.
+            expected_username (str): The expected username.
+            expected_password (str): The expected password.
+
+        Returns:
+            bool: True if credentials are valid, False otherwise.
+        """
         try:
             auth_data = json.loads(message)
             user_provided = auth_data.get('username', '')
@@ -63,6 +83,7 @@ class WebSocketSession:
             return False
 
     async def listen_for_messages(self):
+        """Listen for messages from the WebSocket and process commands."""
         async for message in self.websocket:
             response = await self.command_processor.process_command(message, self.sid)
             response = json.dumps(response) if isinstance(response, dict) else str(response)
@@ -70,4 +91,5 @@ class WebSocketSession:
 
 # Original function to handle websockets using the new WebSocketManager
 async def handle_websocket(websocket, path):
+    """Handle WebSocket connections using WebSocketManager."""
     await WebSocketManager().handle_websocket(websocket, path)

@@ -1,12 +1,12 @@
-import asyncio
-import websockets
-import signal
-from .app_state import AppState
-from .scheduler import SchedulerManager
-from .backup_manager import BackupManager
-from .data_manager import DataManager
-from .indices_manager import IndicesManager
-from .replication_manager import ReplicationManager
+import asyncio  # Module for asynchronous programming
+import websockets  # WebSocket client and server library for asyncio
+import signal  # Module for signal handling
+from .app_state import AppState  # Application state management
+from .scheduler import SchedulerManager  # Scheduler management
+from .backup_manager import BackupManager  # Backup management
+from .data_manager import DataManager  # Data management
+from .indices_manager import IndicesManager  # Indices management
+from .replication_manager import ReplicationManager  # Replication management
 
 # Instantiate managers
 scheduler_manager = SchedulerManager()
@@ -19,11 +19,22 @@ replication_manager = ReplicationManager()
 stop_event = asyncio.Event()
 
 def signal_handler(sig, frame):
-    """Signal handler to initiate shutdown."""
+    """
+    Signal handler to initiate shutdown.
+
+    This function is called when a signal (e.g., SIGINT or SIGTERM) is received.
+    It creates an asyncio task to handle the server shutdown procedures.
+    """
     asyncio.create_task(signal_stop())
 
 async def signal_stop():
-    """Asynchronous function to handle server shutdown procedures."""
+    """
+    Asynchronous function to handle server shutdown procedures.
+
+    This function performs the necessary steps to shut down the server gracefully,
+    including saving data, stopping replication, performing backups, closing WebSocket
+    sessions, and stopping the scheduler.
+    """
     print("Initiating shutdown...")
 
     # Mark data and indices as changed

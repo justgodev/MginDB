@@ -1,48 +1,77 @@
 # Import necessary modules and classes
-import json
-import os
-from .app_state import AppState
-from .connection_handler import asyncio, websockets
+import json  # Module for JSON operations
+import os  # Module for interacting with the operating system
+from .app_state import AppState  # Importing AppState class from app_state module
+from .connection_handler import asyncio, websockets  # Importing asyncio and websockets from connection_handler module
 
 class ReplicationManager:
     def __init__(self):
+        """Initialize ReplicationManager with application state."""
         self.app_state = AppState()
-    
-    # Function to check if replication is enabled
+
     async def has_replication(self):
+        """
+        Check if replication is enabled.
+
+        Returns:
+            bool: True if replication is enabled, False otherwise.
+        """
         replication = self.app_state.config_store.get('REPLICATION')
         return replication == '1'
-    
-    # Function to check if this node is replication master
+
     async def is_replication_master(self):
+        """
+        Check if this node is the replication master.
+
+        Returns:
+            bool: True if this node is the replication master, False otherwise.
+        """
         replication_type = self.app_state.config_store.get('REPLICATION_TYPE')
         return replication_type == 'MASTER'
-    
-    # Function to check if this node is replication slave
+
     async def is_replication_slave(self):
+        """
+        Check if this node is the replication slave.
+
+        Returns:
+            bool: True if this node is the replication slave, False otherwise.
+        """
         replication_type = self.app_state.config_store.get('REPLICATION_TYPE')
         return replication_type == 'SLAVE'
 
-    # Function to check if replication is enabled and this node is the replication master
     async def has_replication_is_replication_master(self):
+        """
+        Check if replication is enabled and this node is the replication master.
+
+        Returns:
+            bool: True if replication is enabled and this node is the replication master, False otherwise.
+        """
         replication_type = self.app_state.config_store.get('REPLICATION_TYPE')
         replication = self.app_state.config_store.get('REPLICATION')
-
         return replication_type == 'MASTER' and replication == '1'
-    
-    # Function to check if replication is enabled and this node is the replication slave
+
     async def has_replication_is_replication_slave(self):
+        """
+        Check if replication is enabled and this node is the replication slave.
+
+        Returns:
+            bool: True if replication is enabled and this node is the replication slave, False otherwise.
+        """
         replication_type = self.app_state.config_store.get('REPLICATION_TYPE')
         replication = self.app_state.config_store.get('REPLICATION')
-
         return replication_type == 'SLAVE' and replication == '1'
 
     async def request_full_replication(self):
+        """
+        Request full replication from the replication master.
+
+        Returns:
+            str: The result of the replication request.
+        """
         master_uri = self.app_state.config_store.get('REPLICATION_MASTER')
         try:
             async with websockets.connect(f'ws://{master_uri}') as websocket:
-                # Sending authentication data
-                await websocket.send(json.dumps(self.app_state.auth_data))
+                await websocket.send(json.dumps(self.app_state.auth_data))  # Send authentication data
                 auth_response = await websocket.recv()
                 if 'Welcome!' in auth_response:
                     await websocket.send('REPLICATE')  # Send the replicate command
@@ -50,7 +79,7 @@ class ReplicationManager:
                     # Initialize empty lists to accumulate chunks
                     data_chunks = []
                     indices_chunks = []
-                    
+
                     # Keep receiving data until a 'done' message is received
                     while True:
                         chunk = await websocket.recv()
@@ -60,9 +89,9 @@ class ReplicationManager:
                             chunk_data = json.loads(chunk)
                             data_chunks.extend(chunk_data['data_chunks'])
                             indices_chunks.extend(chunk_data['indices_chunks'])
-                    
+
                     # After all chunks are received, process them
-                    print(f"Replication chunks received. Processing data...")
+                    print("Replication chunks received. Processing data...")
                     await self.process_replication_data({'data_chunks': data_chunks, 'indices_chunks': indices_chunks})
                     return "Replication data received and processed."
                 else:
@@ -71,6 +100,12 @@ class ReplicationManager:
             return f"Failed to communicate with master {master_uri}: {str(e)}"
 
     async def process_replication_data(self, data):
+        """
+        Process replication data received from the master.
+
+        Args:
+            data (dict): The replication data.
+        """
         try:
             # Joining chunks into complete strings
             data_string = ''.join(data['data_chunks'])
@@ -92,6 +127,15 @@ class ReplicationManager:
             print(f"Error decoding replication data: {e}")
 
     async def send_command_to_slaves(self, command):
+        """
+        Send a command to all replication slaves.
+
+        Args:
+            command (str): The command to send.
+
+        Returns:
+            list: The results from each slave.
+        """
         async def send_command_to_slave(slave_uri):
             try:
                 async with websockets.connect(f'ws://{slave_uri}') as websocket:
@@ -99,15 +143,13 @@ class ReplicationManager:
                     auth_response = await websocket.recv()
                     if 'Welcome!' in auth_response:
                         await websocket.send(command)  # Send the command
-                        return f"OK"
+                        return "OK"
                     else:
                         return f"Authentication failed at {slave_uri}."
             except Exception as e:
                 return f"Failed to send command to {slave_uri}: {str(e)}"
 
-        # Get the list of slave URIs directly from the AppState
-        slave_uris = self.app_state.config_store.get('REPLICATION_SLAVES')
-        # Create and gather tasks for each slave
-        tasks = [send_command_to_slave(slave_uri) for slave_uri in slave_uris]
-        results = await asyncio.gather(*tasks)
-        return results  # Returns a list of results from each slave
+        slave_uris = self.app_state.config_store.get('REPLICATION_SLAVES')  # Get the list of slave URIs
+        tasks = [send_command_to_slave(slave_uri) for slave_uri in slave_uris]  # Create tasks for each slave
+        results = await asyncio.gather(*tasks)  # Gather results from all tasks
+        return results  # Return the results from each slave

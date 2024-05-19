@@ -7,22 +7,37 @@ from .indices_manager import IndicesManager
 
 class ShardingManager:
     def __init__(self):
+        """Initialize the ShardingManager with necessary managers and state."""
         self.app_state = AppState()
         self.data_manager = DataManager()
         self.indices_manager = IndicesManager()
 
     async def has_sharding(self):
+        """Check if sharding is enabled in the configuration."""
         return self.app_state.config_store.get('SHARDING') == '1'
 
     async def is_sharding_master(self):
+        """Check if the current node is a sharding master."""
         return self.app_state.config_store.get('SHARDING_TYPE') == 'MASTER'
 
     async def has_sharding_is_sharding_master(self):
+        """Check if sharding is enabled and the current node is a sharding master."""
         sharding_type = self.app_state.config_store.get('SHARDING_TYPE')
         sharding = self.app_state.config_store.get('SHARDING')
         return sharding_type == 'MASTER' and sharding == '1'
 
     async def check_sharding(self, command, command_line, key):
+        """
+        Check the sharding status and route the command accordingly.
+        
+        Parameters:
+            command (str): The command to execute.
+            command_line (str): The full command line string.
+            key (str): The key involved in the command.
+        
+        Returns:
+            str: "LOCAL" if the command is to be executed locally, or the result from the shard.
+        """
         try:
             sharding = self.app_state.config_store.get('SHARDING')
             sharding_type = self.app_state.config_store.get('SHARDING_TYPE')
@@ -44,6 +59,15 @@ class ShardingManager:
             return f"ERROR: {str(e)}"
 
     def get_shard(self, key):
+        """
+        Determine the shard for a given key.
+        
+        Parameters:
+            key (str): The key to determine the shard for.
+        
+        Returns:
+            str: The shard responsible for the given key.
+        """
         try:
             shards = self.app_state.config_store.get('SHARDS')
             total_shards = len(shards)
@@ -57,6 +81,16 @@ class ShardingManager:
             raise
 
     async def send_to_shard(self, command, shard_uri):
+        """
+        Send a command to a specific shard.
+        
+        Parameters:
+            command (str): The command to send.
+            shard_uri (str): The URI of the shard.
+        
+        Returns:
+            str: The response from the shard or an error message.
+        """
         uri = f"ws://{shard_uri}"
         try:
             async with websockets.connect(uri) as websocket:
@@ -73,6 +107,17 @@ class ShardingManager:
             return False
 
     async def broadcast_query(self, command, shard_uris, expected_types=None):
+        """
+        Broadcast a query to multiple shards and aggregate the results.
+        
+        Parameters:
+            command (str): The query command to broadcast.
+            shard_uris (list): The list of shard URIs to send the query to.
+            expected_types (dict): The expected data types for the response data.
+        
+        Returns:
+            list: The aggregated results from all shards.
+        """
         async def query_shard(uri):
             try:
                 async with websockets.connect(f'ws://{uri}') as websocket:
@@ -102,6 +147,16 @@ class ShardingManager:
 
     @staticmethod
     def correct_data_types(data, expected_types):
+        """
+        Correct the data types of the entries based on expected types.
+        
+        Parameters:
+            data (list): The list of data entries to correct.
+            expected_types (dict): The expected data types for each key.
+        
+        Returns:
+            list: The corrected data entries.
+        """
         for entry in data:
             for key, expected_type in expected_types.items():
                 if key in entry and not isinstance(entry[key], expected_type):
@@ -112,6 +167,16 @@ class ShardingManager:
         return data
 
     async def broadcast_query_with_response_tracking(self, command, shard_uris):
+        """
+        Broadcast a query to multiple shards and track responsive shards.
+        
+        Parameters:
+            command (str): The query command to broadcast.
+            shard_uris (list): The list of shard URIs to send the query to.
+        
+        Returns:
+            tuple: The list of results and the list of responsive shards.
+        """
         results = []
         responsive_shards = []
         for uri in shard_uris:
@@ -134,6 +199,12 @@ class ShardingManager:
         return results, responsive_shards
 
     async def reshard(self):
+        """
+        Reshard the data and indices across all shards.
+        
+        Returns:
+            str: The result of the resharding process.
+        """
         try:
             host = self.app_state.config_store.get('HOST')
             port = self.app_state.config_store.get('PORT')
@@ -175,6 +246,16 @@ class ShardingManager:
             return f"Resharding failed {error}, rolled back. {rollback_result}"
 
     async def redistribute_indices(self, indices, shards):
+        """
+        Redistribute indices to the appropriate shards.
+        
+        Parameters:
+            indices (dict): The indices to redistribute.
+            shards (list): The list of all shards.
+        
+        Returns:
+            str: The result of the redistribution process.
+        """
         from .command_processing import CommandProcessor
         command_processor = CommandProcessor()
 
@@ -212,6 +293,15 @@ class ShardingManager:
             return "Redistribution of indices failed"
 
     async def redistribute_data(self, data):
+        """
+        Redistribute data to the appropriate shards.
+        
+        Parameters:
+            data (dict): The data to redistribute.
+        
+        Returns:
+            str: The result of the redistribution process.
+        """
         try:
             host = self.app_state.config_store.get('HOST')
             port = self.app_state.config_store.get('PORT')
@@ -247,6 +337,16 @@ class ShardingManager:
             return "Redistribution failed"
 
     def process_data_item(self, key, sub_key, value, shard, shard_commands):
+        """
+        Process a data item for redistribution.
+        
+        Parameters:
+            key (str): The key of the data item.
+            sub_key (str): The subkey of the data item.
+            value (Any): The value of the data item.
+            shard (str): The shard responsible for the data item.
+            shard_commands (dict): The dictionary to store shard commands.
+        """
         combined_key = f"{key}:{sub_key}" if sub_key else key
         value_str = json.dumps(value) if isinstance(value, (dict, list, set)) else str(value)
         command = f"{combined_key} {value_str}"
@@ -256,6 +356,15 @@ class ShardingManager:
             shard_commands[shard].append(command)
 
     async def process_batch(self, shard, commands, host, port):
+        """
+        Process a batch of commands and send to the appropriate shard.
+        
+        Parameters:
+            shard (str): The shard to send the commands to.
+            commands (list): The list of commands to send.
+            host (str): The host address.
+            port (str): The port number.
+        """
         from .command_processing import CommandProcessor
         command_processor = CommandProcessor()
         batch_command = "SET " + '|'.join(commands)
@@ -266,6 +375,15 @@ class ShardingManager:
             await self.send_to_shard(batch_command, shard_uri)
 
     async def rollback_all_shards(self, shards):
+        """
+        Rollback all shards to the previous state.
+        
+        Parameters:
+            shards (list): The list of shard URIs.
+        
+        Returns:
+            str: The result of the rollback process.
+        """
         from .backup_manager import BackupManager
         backup_manager = BackupManager()
         host = self.app_state.config_store.get('HOST')
@@ -274,6 +392,15 @@ class ShardingManager:
         return await backup_manager.backup_rollback()
 
     def merge_data(self, all_data):
+        """
+        Merge data from multiple sources into a single dataset.
+        
+        Parameters:
+            all_data (list): The list of datasets to merge.
+        
+        Returns:
+            dict: The merged dataset.
+        """
         def deep_merge_dict(target, source):
             for key, value in source.items():
                 if key in target:
@@ -294,6 +421,15 @@ class ShardingManager:
         return merged
 
     def convert_sets_to_lists(self, data):
+        """
+        Convert sets to lists in the given data.
+        
+        Parameters:
+            data (Any): The data to convert.
+        
+        Returns:
+            Any: The converted data.
+        """
         if isinstance(data, set):
             return list(data)
         elif isinstance(data, dict):
@@ -303,6 +439,15 @@ class ShardingManager:
         return data
 
     def prepare_value(self, value):
+        """
+        Prepare a value for storage or transmission.
+        
+        Parameters:
+            value (Any): The value to prepare.
+        
+        Returns:
+            str: The prepared value as a string.
+        """
         if not isinstance(value, str):
             try:
                 value = json.dumps(value)
@@ -312,6 +457,15 @@ class ShardingManager:
         return value
 
     def prepare_data_for_transmission(self, data):
+        """
+        Prepare data for transmission over the network.
+        
+        Parameters:
+            data (Any): The data to prepare.
+        
+        Returns:
+            Any: The prepared data.
+        """
         if isinstance(data, dict):
             return {key: self.prepare_data_for_transmission(value) for key, value in data.items()}
         elif isinstance(data, list):

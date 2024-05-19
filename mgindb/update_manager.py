@@ -1,24 +1,35 @@
 # Import necessary modules and classes
-import os
-import requests
-import subprocess
-import sys
-import hashlib
-from .app_state import AppState
+import os  # Module for interacting with the operating system
+import requests  # Module for making HTTP requests
+import subprocess  # Module for running subprocesses
+import sys  # Module for system-specific parameters and functions
+import hashlib  # Module for generating hash values
+from .app_state import AppState  # Importing AppState class from app_state module
 
 class UpdateManager:
     def __init__(self):
+        """Initialize UpdateManager with application state and setup update URL and download directory."""
         self.app_state = AppState()
         self.update_url = f"{self.app_state.mgindb_url}/latest_version.json"
         self.download_directory = "downloads"
     
     def has_auto_update(self):
-        """Check if auto update is activated."""
+        """
+        Check if auto update is activated.
+
+        Returns:
+            bool: True if auto update is activated, False otherwise.
+        """
         auto_update = self.app_state.config_store.get('AUTO_UPDATE')
         return auto_update == '1'
 
     def check_update(self, *args, **kwargs):
-        """Check if there is a new version available."""
+        """
+        Check if there is a new version available.
+
+        Returns:
+            tuple: A tuple containing update data and a message.
+        """
         try:
             current_version = self.app_state.version
             response = requests.get(self.update_url)
@@ -30,10 +41,19 @@ class UpdateManager:
             else:
                 return None, "MginDB is up to date..."
         except Exception as e:
-            return None, "Error checking for updates: {e}"
+            return None, f"Error checking for updates: {e}"
 
     def verify_checksum(self, file_path, expected_checksum):
-        """Verify the checksum of the downloaded file."""
+        """
+        Verify the checksum of the downloaded file.
+
+        Args:
+            file_path (str): The path to the file to verify.
+            expected_checksum (str): The expected checksum.
+
+        Returns:
+            bool: True if the checksum matches, False otherwise.
+        """
         sha256_hash = hashlib.sha256()
         with open(file_path, "rb") as f:
             for byte_block in iter(lambda: f.read(4096), b""):
@@ -42,7 +62,12 @@ class UpdateManager:
         return calculated_checksum == expected_checksum
 
     def install_update(self, update_data):
-        """Download and install the new version if available."""
+        """
+        Download and install the new version if available.
+
+        Args:
+            update_data (dict): The update data containing version, URL, and checksum.
+        """
         try:
             latest_version = update_data.get('version')
             wheel_name = f"mgindb-{latest_version}-py3-none-any.whl"

@@ -22,11 +22,24 @@ class ServerManager:
         self.replication_manager = ReplicationManager()  # Manages replication
 
     async def start_server(self):
-        """Asynchronous function to start the server."""
+        """
+        Asynchronous function to start the server.
+
+        This function is an entry point to start the server asynchronously.
+        It calls the main function which handles the initialization and starting
+        of various server components.
+        """
         await self.main()  # Call the main function to start the server
 
     async def main(self):
-        """Main function to initialize and start the server components."""
+        """
+        Main function to initialize and start the server components.
+
+        This function handles the initialization of the server components such as
+        configuration loading, scheduler, data, indices, and replication setup.
+        It also starts the WebSocket server and waits for a stop event to gracefully
+        shutdown the server.
+        """
         try:
             # Load configuration
             load_config()  # Load server configuration

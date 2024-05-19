@@ -13,35 +13,100 @@ class MginDBCLI:
         self.websocket = None  # WebSocket connection placeholder
 
     def color_text(self, text, color_code):
-        """Returns text formatted with the given ANSI color code."""
+        """
+        Returns text formatted with the given ANSI color code.
+
+        Args:
+            text (str): The text to color.
+            color_code (int): The ANSI color code.
+
+        Returns:
+            str: The colored text.
+        """
         return f"\033[{color_code}m{text}\033[0m"
 
     def red(self, text):
-        """Returns text formatted in red color."""
+        """
+        Returns text formatted in red color.
+
+        Args:
+            text (str): The text to color.
+
+        Returns:
+            str: The red-colored text.
+        """
         return self.color_text(text, 31)
 
     def green(self, text):
-        """Returns text formatted in green color."""
+        """
+        Returns text formatted in green color.
+
+        Args:
+            text (str): The text to color.
+
+        Returns:
+            str: The green-colored text.
+        """
         return self.color_text(text, 32)
 
     def blue(self, text):
-        """Returns text formatted in blue color."""
+        """
+        Returns text formatted in blue color.
+
+        Args:
+            text (str): The text to color.
+
+        Returns:
+            str: The blue-colored text.
+        """
         return self.color_text(text, 34)
 
     def cyan(self, text):
-        """Returns text formatted in cyan color."""
+        """
+        Returns text formatted in cyan color.
+
+        Args:
+            text (str): The text to color.
+
+        Returns:
+            str: The cyan-colored text.
+        """
         return self.color_text(text, 36)
 
     def yellow(self, text):
-        """Returns text formatted in yellow color."""
+        """
+        Returns text formatted in yellow color.
+
+        Args:
+            text (str): The text to color.
+
+        Returns:
+            str: The yellow-colored text.
+        """
         return self.color_text(text, 33)
 
     def magenta(self, text):
-        """Returns text formatted in magenta color."""
-        return f"\033[35m{text}\033[0m"
+        """
+        Returns text formatted in magenta color.
+
+        Args:
+            text (str): The text to color.
+
+        Returns:
+            str: The magenta-colored text.
+        """
+        return self.color_text(text, 35)
 
     def print_table(self, data):
-        """Prints data in a table format."""
+        """
+        Prints data in a table format.
+
+        This function prints the provided data in a structured table format.
+        It supports both list and dictionary data structures.
+
+        Args:
+            data (list or dict): The data to print.
+        """
         if isinstance(data, list):
             if all(isinstance(item, dict) for item in data):
                 self.print_section(data)  # Print section if all items are dictionaries
@@ -60,7 +125,15 @@ class MginDBCLI:
         print('')
 
     def print_section(self, sections):
-        """Prints a section of data."""
+        """
+        Prints a section of data.
+
+        This function prints a list of dictionaries in a tabular format,
+        with headers derived from the dictionary keys.
+
+        Args:
+            sections (list of dict): The list of dictionaries to print.
+        """
         if not sections:
             print("No data available.")
             return
@@ -76,11 +149,31 @@ class MginDBCLI:
             print(" | ".join(values))
 
     def calculate_column_widths(self, sections, headers):
-        """Calculates the width of each column."""
+        """
+        Calculates the width of each column.
+
+        This function determines the maximum width required for each column
+        based on the headers and the data values.
+
+        Args:
+            sections (list of dict): The list of dictionaries containing the data.
+            headers (list of str): The list of headers.
+
+        Returns:
+            dict: A dictionary with headers as keys and column widths as values.
+        """
         return {h: max(len(h), *(len(self.format_cell(item.get(h, ""))) for item in sections)) for h in headers}
 
     def print_headers(self, headers, column_widths):
-        """Prints the headers of the table."""
+        """
+        Prints the headers of the table.
+
+        This function prints the headers of the table along with a separator line.
+
+        Args:
+            headers (list of str): The list of headers.
+            column_widths (dict): A dictionary with headers as keys and column widths as values.
+        """
         print('')
         header_line = " | ".join(h.center(column_widths[h]) for h in headers)
         separator_line = "-+-".join("-" * column_widths[h] for h in headers)
@@ -88,11 +181,28 @@ class MginDBCLI:
         print(separator_line)
 
     def format_cell(self, value):
-        """Formats a cell value."""
+        """
+        Formats a cell value.
+
+        This function converts the cell value to a string.
+
+        Args:
+            value: The value to format.
+
+        Returns:
+            str: The formatted value.
+        """
         return str(value)
 
     def print_single_entry(self, entry):
-        """Prints a single entry."""
+        """
+        Prints a single entry.
+
+        This function prints a single dictionary entry in a tabular format.
+
+        Args:
+            entry (dict): The dictionary to print.
+        """
         if isinstance(entry, dict):
             headers = sorted(entry.keys())
             column_widths = self.calculate_column_widths([entry], headers)
@@ -105,7 +215,16 @@ class MginDBCLI:
             print("Invalid entry type")
 
     def format_response(self, response, use_table_format):
-        """Formats the server response."""
+        """
+        Formats the server response.
+
+        This function formats the server response as either a JSON string or a table,
+        depending on the use_table_format flag.
+
+        Args:
+            response (str): The server response.
+            use_table_format (bool): Flag indicating whether to use table format.
+        """
         try:
             json_response = json.loads(response)
             if use_table_format:
@@ -116,7 +235,15 @@ class MginDBCLI:
             print(response)  # Print raw response if JSON decoding fails
 
     async def cli_session(self, uri):
-        """Handles the CLI session."""
+        """
+        Handles the CLI session.
+
+        This function manages the CLI session, including user authentication,
+        sending commands to the server, and handling responses.
+
+        Args:
+            uri (str): The WebSocket URI to connect to.
+        """
         print('')
         username = input(self.red("Enter username (leave blank if not required): "))
         password = getpass(self.red("Enter password (leave blank if not required): "))
@@ -191,7 +318,14 @@ class MginDBCLI:
                 await self.websocket.close()  # Close the WebSocket connection
 
     async def shutdown(self, signal=None):
-        """Handles shutdown of the client."""
+        """
+        Handles shutdown of the client.
+
+        This function cancels all running tasks and closes the WebSocket connection.
+
+        Args:
+            signal (signal.Signals, optional): The signal that triggered the shutdown.
+        """
         if signal:
             print(f"Received exit signal {signal.name}...")
         tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
@@ -203,7 +337,12 @@ class MginDBCLI:
         await asyncio.sleep(0.1)
 
     def run(self):
-        """Runs the CLI."""
+        """
+        Runs the CLI.
+
+        This function initializes the event loop, sets up signal handlers for shutdown,
+        and starts the CLI session.
+        """
         try:
             config = load_config()  # Load configuration
             uri = f"ws://{config.get('HOST')}:{config.get('PORT')}"  # Construct WebSocket URI
