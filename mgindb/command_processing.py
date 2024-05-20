@@ -576,6 +576,7 @@ class DataCommandHandler:
         port = AppState().config_store.get('PORT')
         AppState().data_store.clear()  # Clear the data store
         AppState().indices.clear()  # Clear the indices
+        self.processor.cache_handler.flush_cache  # Clear cached data
         self.processor.data_manager.save_data()  # Save the data
         self.processor.indices_manager.save_indices()  # Save the indices
         if await self.processor.sharding_manager.has_sharding_is_sharding_master():
