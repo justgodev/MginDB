@@ -9,10 +9,12 @@ from .connection_handler import asyncio  # Importing asyncio from connection_han
 from .constants import SCHEDULER_FILE  # Importing SCHEDULER_FILE constant from constants module
 from .data_manager import DataManager  # Importing DataManager class
 from .indices_manager import IndicesManager  # Importing IndicesManager class
+from .cache_manager import CacheManager  # Importing CacheManager class
 
 # Instantiate managers
 data_manager = DataManager()
 indices_manager = IndicesManager()
+cache_manager = CacheManager()
 
 class SchedulerManager:
     def __init__(self):
@@ -108,8 +110,9 @@ class SchedulerTasks:
                 self.save_scheduler()
                 task_execution_count = 0
 
-            # Cleanup expired keys
+            # Cleanup expired keys and entries
             await data_manager.cleanup_expired_keys()
+            await cache_manager.cleanup_expired_entries()
 
             # Save on File
             save_timer += 1

@@ -28,6 +28,11 @@ class AppState:
             cls.monitor_subscribers = set()  # Set of monitor subscribers
             cls.sub_pub = {}  # Publish/subscribe dictionary
 
+            # Cache
+            cls.data_store_cache = {}
+            cls.data_store_cache_keys_expiration = {}
+            cls.data_store_key_command_mapping = {}
+
             # Changes tracking
             cls.data_has_changed = False  # Flag to track data changes
             cls.indices_has_changed = False  # Flag to track indices changes

@@ -13,6 +13,7 @@ from .backup_manager import BackupManager  # Backup management
 from .sub_pub_manager import SubPubManager  # Publish/subscribe management
 from .command_utils import CommandUtilsManager  # Utility functions for command handling
 from .replication_manager import ReplicationManager  # Replication management
+from .cache_manager import CacheManager  # Replication management
 
 class CommandProcessor:
     def __init__(self):
@@ -30,6 +31,7 @@ class CommandProcessor:
         self.data_handler = DataCommandHandler(self)  # Handles data commands
         self.query_handler = QueryCommandHandler(self)  # Handles query commands
         self.shard_handler = ShardCommandHandler(self)  # Handles shard commands
+        self.cache_manager = CacheManager()  # Handles cache commands
 
     async def process_command(self, command_line, sid=False):
         """Processes a command line input."""
@@ -334,6 +336,7 @@ class DataCommandHandler:
             if updated_count > 0:
                 full_key = ':'.join(base_path + [last_key])
                 full_data = data_store
+                self.processor.cache_manager.remove_from_cache(base_path)  # Invalidate cache entries
                 await self.processor.sub_pub_manager.notify_subscribers(full_key, full_data)  # Notify subscribers
             AppState().data_has_changed = True
             if not self.processor.scheduler_manager.is_scheduler_active():
@@ -369,6 +372,7 @@ class DataCommandHandler:
                 pass
         current[last_key] = value  # Set the value
         await self.processor.indices_manager.update_index_on_add(parts, last_key, value, entity_key)  # Update the index
+        self.processor.cache_manager.remove_from_cache(entity_key)  # Invalidate cache entries
         full_key = ':'.join(parts)
         await self.processor.sub_pub_manager.notify_subscribers(full_key, current)  # Notify subscribers
         AppState().data_has_changed = True
@@ -426,6 +430,7 @@ class DataCommandHandler:
             for key in base_path:
                 current = current[key]
             deleted_count = recursive_delete(current)  # Recursively delete keys
+            self.processor.cache_manager.remove_from_cache(base_path)  # Invalidate cache entries
             AppState().data_has_changed = True
             if not self.processor.scheduler_manager.is_scheduler_active():
                 self.processor.data_manager.save_data()  # Save data if scheduler is not active
@@ -436,6 +441,7 @@ class DataCommandHandler:
     async def delete_specific_key(self, parts):
         """Deletes a specific key."""
         try:
+            base_key = parts[0]
             current_data = AppState().data_store
             for part in parts[:-1]:
                 current_data = current_data[part]
@@ -455,6 +461,10 @@ class DataCommandHandler:
                 AppState().data_has_changed = True
                 if not self.processor.scheduler_manager.is_scheduler_active():
                     self.processor.data_manager.save_data()  # Save data if scheduler is not active
+
+                # Invalidate cache entries related to the base key
+                self.processor.cache_manager.remove_from_cache(base_key)  # Invalidate cache entries
+                
                 return "OK"
             else:
                 return "ERROR: Key does not exist"
@@ -620,6 +630,13 @@ class QueryCommandHandler:
         main_key = key_parts[0]  # Get the main key
         specific_key = key_parts[1] if len(key_parts) > 1 else None  # Get the specific key
         sub_key_path = key_parts[2:] if len(key_parts) > 2 else []  # Get the sub-key path
+
+        # Check the cache first
+        command = f"QUERY {root} {conditions}".strip() # Construct the full command for caching purposes
+        cache_result = self.processor.cache_manager.get_cache(command)
+        if cache_result is not None:
+            return cache_result
+
         if conditions.startswith("WHERE "):
             conditions = conditions[6:].strip()  # Remove 'WHERE' from the conditions
         include_fields, exclude_fields, conditions = self.processor.command_utils_manager.parse_and_clean_fields(conditions)  # Parse and clean fields
@@ -649,9 +666,15 @@ class QueryCommandHandler:
             results = self.processor.command_utils_manager.format_as_list(results)  # Format as list
         else:
             results = self.processor.command_utils_manager.format_as_list(self.processor.data_manager.process_nested_data(data_to_query))  # Process nested data
+
         if modifiers:
             results = self.processor.command_utils_manager.apply_query_modifiers(results, modifiers)  # Apply query modifiers
         results = [self.processor.command_utils_manager.filter_fields(entry, include_fields, exclude_fields) for entry in results]  # Filter fields
+
+        # Add the result to the cache with a TTL of 5 minutes (300 seconds)
+        if results:
+            self.processor.cache_manager.add_to_cache(command, root, results, ttl=300)
+
         return results
 
 class ShardCommandHandler:
