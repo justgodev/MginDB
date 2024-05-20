@@ -9,7 +9,7 @@ class CacheManager:
 
     def has_caching(self):
         return self.app_state.config_store.get('QUERY_CACHING') == '1'
-    
+
     def add_to_cache(self, command, query_key, query_result):
         if self.has_caching():
             query_caching_ttl = self.app_state.config_store.get('QUERY_CACHING_TTL')
@@ -33,7 +33,7 @@ class CacheManager:
                         if individual_key not in self.app_state.data_store_key_command_mapping:
                             self.app_state.data_store_key_command_mapping[individual_key] = []
                         self.app_state.data_store_key_command_mapping[individual_key].append(command)
-    
+
     def remove_from_cache(self, query_key):
         if self.has_caching():
             if query_key in self.app_state.data_store_key_command_mapping:
@@ -45,8 +45,10 @@ class CacheManager:
                         del self.app_state.data_store_cache_keys_expiration[command]
 
             # Also remove broader queries that depend on this key
+            keys_to_remove = []
             for key, commands in self.app_state.data_store_key_command_mapping.items():
                 if query_key in key:
+                    keys_to_remove.append(key)
                     for command in commands:
                         if command in self.app_state.data_store_cache:
                             del self.app_state.data_store_cache[command]
@@ -56,21 +58,29 @@ class CacheManager:
                         cmd for cmd in commands if cmd not in self.app_state.data_store_cache
                     ]
                     if not self.app_state.data_store_key_command_mapping[key]:
-                        del self.app_state.data_store_key_command_mapping[key]
+                        keys_to_remove.append(key)
+
+            for key in keys_to_remove:
+                del self.app_state.data_store_key_command_mapping[key]
 
     async def cleanup_expired_entries(self):
         if self.has_caching():
             current_time = time.time()
             expired_keys = [key for key, exp in self.app_state.data_store_cache_keys_expiration.items() if exp <= current_time]
             for key in expired_keys:
-                del self.app_state.data_store_cache[key]
-                del self.app_state.data_store_cache_keys_expiration[key]
+                if key in self.app_state.data_store_cache:
+                    del self.app_state.data_store_cache[key]
+                if key in self.app_state.data_store_cache_keys_expiration:
+                    del self.app_state.data_store_cache_keys_expiration[key]
                 # Remove command from self.app_state.data_store_key_command_mapping
+                keys_to_remove = []
                 for query_key in self.app_state.data_store_key_command_mapping:
                     if key in self.app_state.data_store_key_command_mapping[query_key]:
                         self.app_state.data_store_key_command_mapping[query_key].remove(key)
                         if not self.app_state.data_store_key_command_mapping[query_key]:  # Clean up empty lists
-                            del self.app_state.data_store_key_command_mapping[query_key]
+                            keys_to_remove.append(query_key)
+                for query_key in keys_to_remove:
+                    del self.app_state.data_store_key_command_mapping[query_key]
 
     def get_cache(self, command):
         if self.has_caching():
@@ -78,11 +88,11 @@ class CacheManager:
                 # Return cached result if not expired
                 if self.app_state.data_store_cache_keys_expiration[command] > time.time():
                     self.app_state.data_store_cache[command]["last_accessed"] = time.time()
-                    #print(f"Command {command} found in cache")
+                    print(f"Command {command} found in cache")
                     return self.app_state.data_store_cache[command]["result"]
-            #print(f"Command {command} not found in cache")
+            print(f"Command {command} not found in cache")
             return None
-        #print("Cache not activated")
+        print("Cache not activated")
         return None
 
     def flush_cache(self, *args, **kwargs):
