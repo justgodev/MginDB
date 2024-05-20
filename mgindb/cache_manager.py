@@ -91,12 +91,14 @@ class CacheManager:
                     return self.app_state.data_store_cache[command]["result"]
             #print(f"Command {command} not found in cache")
             return None
-        #print("Cache not activated")
+        #print("Caching not activated")
         return None
 
-    def flush_cache(self, *args, **kwargs):
+    async def flush_cache(self, *args, **kwargs):
         """Flush the entire cache."""
-        self.app_state.data_store_cache.clear()
-        self.app_state.data_store_cache_keys_expiration.clear()
-        self.app_state.data_store_key_command_mapping.clear()
-        return "OK"
+        if await self.has_caching():
+            self.app_state.data_store_cache.clear()
+            self.app_state.data_store_cache_keys_expiration.clear()
+            self.app_state.data_store_key_command_mapping.clear()
+            return "OK"
+        return "Caching not activated"
