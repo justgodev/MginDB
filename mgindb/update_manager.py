@@ -39,7 +39,7 @@ class UpdateManager:
             if current_version < latest_version:
                 return data, f"New version available: {latest_version}"  # Return entire data object which includes the version and checksum
             else:
-                return None, "MginDB is up to date..."
+                return None, f"MginDB is up to date (v.{self.app_state.version})"
         except Exception as e:
             return None, f"Error checking for updates: {e}"
 
