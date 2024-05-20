@@ -31,7 +31,7 @@ class CommandProcessor:
         self.data_handler = DataCommandHandler(self)  # Handles data commands
         self.query_handler = QueryCommandHandler(self)  # Handles query commands
         self.shard_handler = ShardCommandHandler(self)  # Handles shard commands
-        self.cache_manager = CacheManager()  # Handles cache commands
+        self.cache_handler = CacheManager()  # Handles cache commands
 
     async def process_command(self, command_line, sid=False):
         """Processes a command line input."""
@@ -77,6 +77,7 @@ class CommandProcessor:
             'UNSUB': self.sub_pub_manager.unsubscribe_command,
             'SCHEDULE': self.scheduler_manager.schedule_command,
             'FLUSHALL': self.data_handler.flush_all_command,
+            'FLUSHCACHE': self.cache_handler.flush_cache,
             'REPLICATE': self.shard_handler.replicate_command,
             'RESHARD': self.shard_handler.reshard_command,
             'ROLLBACK': self.backup_manager.backup_rollback,
@@ -336,7 +337,7 @@ class DataCommandHandler:
             if updated_count > 0:
                 full_key = ':'.join(base_path + [last_key])
                 full_data = data_store
-                self.processor.cache_manager.remove_from_cache(base_path)  # Invalidate cache entries
+                self.processor.cache_handler.remove_from_cache(base_path)  # Invalidate cache entries
                 await self.processor.sub_pub_manager.notify_subscribers(full_key, full_data)  # Notify subscribers
             AppState().data_has_changed = True
             if not self.processor.scheduler_manager.is_scheduler_active():
@@ -372,7 +373,7 @@ class DataCommandHandler:
                 pass
         current[last_key] = value  # Set the value
         await self.processor.indices_manager.update_index_on_add(parts, last_key, value, entity_key)  # Update the index
-        self.processor.cache_manager.remove_from_cache(entity_key)  # Invalidate cache entries
+        self.processor.cache_handler.remove_from_cache(entity_key)  # Invalidate cache entries
         full_key = ':'.join(parts)
         await self.processor.sub_pub_manager.notify_subscribers(full_key, current)  # Notify subscribers
         AppState().data_has_changed = True
@@ -430,7 +431,7 @@ class DataCommandHandler:
             for key in base_path:
                 current = current[key]
             deleted_count = recursive_delete(current)  # Recursively delete keys
-            self.processor.cache_manager.remove_from_cache(base_path)  # Invalidate cache entries
+            self.processor.cache_handler.remove_from_cache(base_path)  # Invalidate cache entries
             AppState().data_has_changed = True
             if not self.processor.scheduler_manager.is_scheduler_active():
                 self.processor.data_manager.save_data()  # Save data if scheduler is not active
@@ -463,7 +464,7 @@ class DataCommandHandler:
                     self.processor.data_manager.save_data()  # Save data if scheduler is not active
 
                 # Invalidate cache entries related to the base key
-                self.processor.cache_manager.remove_from_cache(base_key)  # Invalidate cache entries
+                self.processor.cache_handler.remove_from_cache(base_key)  # Invalidate cache entries
                 
                 return "OK"
             else:
@@ -632,8 +633,8 @@ class QueryCommandHandler:
         sub_key_path = key_parts[2:] if len(key_parts) > 2 else []  # Get the sub-key path
 
         # Check the cache first
-        command = f"QUERY {root} {conditions}".strip() # Construct the full command for caching purposes
-        cache_result = self.processor.cache_manager.get_cache(command)
+        command = f"QUERY {root} {conditions} {modifiers}".strip() # Construct the full command for caching purposes
+        cache_result = self.processor.cache_handler.get_cache(command)
         if cache_result is not None:
             return cache_result
 
@@ -673,7 +674,7 @@ class QueryCommandHandler:
 
         # Add the result to the cache with a TTL of 5 minutes (300 seconds)
         if results:
-            self.processor.cache_manager.add_to_cache(command, root, results, ttl=300)
+            self.processor.cache_handler.add_to_cache(command, root, results, ttl=300)
 
         return results
 

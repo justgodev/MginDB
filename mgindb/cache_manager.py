@@ -70,5 +70,14 @@ class CacheManager:
             # Return cached result if not expired
             if self.app_state.data_store_cache_keys_expiration[command] > time.time():
                 self.app_state.data_store_cache[command]["last_accessed"] = time.time()
+                print(f"Command {command} found in cache")
                 return self.app_state.data_store_cache[command]["result"]
+        print(f"Command {command} not found in cache")
         return None
+
+    def flush_cache(self, *args, **kwargs):
+        """Flush the entire cache."""
+        self.app_state.data_store_cache.clear()
+        self.app_state.data_store_cache_keys_expiration.clear()
+        self.app_state.data_store_key_command_mapping.clear()
+        return "OK"
