@@ -21,9 +21,9 @@ class CacheManager:
         self.app_state.data_store_key_command_mapping[query_key].append(command)
 
         # Track individual keys involved in the query
-        if isinstance(query_result, list):  # Assuming query_result is a list of dicts
+        if isinstance(query_result, list):
             for entry in query_result:
-                if 'key' in entry:  # Assuming each entry has a 'key' field
+                if 'key' in entry:
                     individual_key = f"{query_key}:{entry['key']}"
                     if individual_key not in self.app_state.data_store_key_command_mapping:
                         self.app_state.data_store_key_command_mapping[individual_key] = []
@@ -70,7 +70,5 @@ class CacheManager:
             # Return cached result if not expired
             if self.app_state.data_store_cache_keys_expiration[command] > time.time():
                 self.app_state.data_store_cache[command]["last_accessed"] = time.time()
-                print(f"Command {command} found in cache")
                 return self.app_state.data_store_cache[command]["result"]
-        print(f"Command {command} not found in cache")
         return None
