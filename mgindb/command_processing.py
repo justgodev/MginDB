@@ -244,14 +244,14 @@ class DataCommandHandler:
         main_keys = list(data_store.keys())  # Get the list of main keys
         return json.dumps(sorted(main_keys))  # Return the sorted list of keys as a JSON string
 
-    def count_command(self, args):
+    async def count_command(self, args):
         """Handles the COUNT command."""
         parts = args.split('WHERE', 1)  # Split the arguments by 'WHERE'
         root = parts[0].strip()  # Get the root key
         conditions = parts[1].strip() if len(parts) > 1 else ""  # Get the conditions
 
         # Use process_local_query to get the filtered results
-        results = self.processor.query_handler.process_local_query(root, f"WHERE {conditions}" if conditions else "")
+        results = await self.processor.query_handler.process_local_query(root, f"WHERE {conditions}" if conditions else "")
 
         if isinstance(results, list):
             return len(results)  # Return the number of results if it's a list
@@ -634,7 +634,7 @@ class QueryCommandHandler:
         sub_key_path = key_parts[2:] if len(key_parts) > 2 else []  # Get the sub-key path
 
         # Check the cache first
-        command = f"QUERY {root} {conditions} {modifiers}".strip() # Construct the full command for caching purposes
+        command = f"QUERY {root} {conditions if conditions else ''} {modifiers if modifiers else ''}".strip() # Construct the full command for caching purposes
         cache_result = await self.processor.cache_handler.get_cache(command)
         if cache_result is not None:
             return cache_result
