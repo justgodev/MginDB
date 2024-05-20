@@ -62,7 +62,7 @@ class ServerManager:
             print("Loading scheduler...")  # Print message indicating scheduler loading
 
             # Load cache manager
-            if self.cache_manager.has_caching():
+            if await self.cache_manager.has_caching():
                 print("Loading cache manager")
 
             # Load data

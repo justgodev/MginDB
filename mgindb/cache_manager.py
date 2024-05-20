@@ -1,4 +1,3 @@
-import json  # Module for JSON operations
 import time  # Module for time-related functions
 from .app_state import AppState  # Import application state management
 
@@ -7,11 +6,11 @@ class CacheManager:
         """Initialize CacheManager with application state."""
         self.app_state = AppState()
 
-    def has_caching(self):
+    async def has_caching(self):
         return self.app_state.config_store.get('QUERY_CACHING') == '1'
 
-    def add_to_cache(self, command, query_key, query_result):
-        if self.has_caching():
+    async def add_to_cache(self, command, query_key, query_result):
+        if await self.has_caching():
             query_caching_ttl = self.app_state.config_store.get('QUERY_CACHING_TTL')
             current_time = time.time()
             expiration_time = current_time + int(query_caching_ttl)
@@ -34,8 +33,8 @@ class CacheManager:
                             self.app_state.data_store_key_command_mapping[individual_key] = []
                         self.app_state.data_store_key_command_mapping[individual_key].append(command)
 
-    def remove_from_cache(self, query_key):
-        if self.has_caching():
+    async def remove_from_cache(self, query_key):
+        if await self.has_caching():
             if query_key in self.app_state.data_store_key_command_mapping:
                 related_commands = self.app_state.data_store_key_command_mapping.pop(query_key)
                 for command in related_commands:
@@ -64,7 +63,7 @@ class CacheManager:
                 del self.app_state.data_store_key_command_mapping[key]
 
     async def cleanup_expired_entries(self):
-        if self.has_caching():
+        if await self.has_caching():
             current_time = time.time()
             expired_keys = [key for key, exp in self.app_state.data_store_cache_keys_expiration.items() if exp <= current_time]
             for key in expired_keys:
@@ -82,17 +81,17 @@ class CacheManager:
                 for query_key in keys_to_remove:
                     del self.app_state.data_store_key_command_mapping[query_key]
 
-    def get_cache(self, command):
-        if self.has_caching():
+    async def get_cache(self, command):
+        if await self.has_caching():
             if command in self.app_state.data_store_cache:
                 # Return cached result if not expired
                 if self.app_state.data_store_cache_keys_expiration[command] > time.time():
                     self.app_state.data_store_cache[command]["last_accessed"] = time.time()
-                    print(f"Command {command} found in cache")
+                    #print(f"Command {command} found in cache")
                     return self.app_state.data_store_cache[command]["result"]
-            print(f"Command {command} not found in cache")
+            #print(f"Command {command} not found in cache")
             return None
-        print("Cache not activated")
+        #print("Cache not activated")
         return None
 
     def flush_cache(self, *args, **kwargs):

@@ -337,7 +337,7 @@ class DataCommandHandler:
             if updated_count > 0:
                 full_key = ':'.join(base_path + [last_key])
                 full_data = data_store
-                self.processor.cache_handler.remove_from_cache(base_path)  # Invalidate cache entries
+                await self.processor.cache_handler.remove_from_cache(base_path)  # Invalidate cache entries
                 await self.processor.sub_pub_manager.notify_subscribers(full_key, full_data)  # Notify subscribers
             AppState().data_has_changed = True
             if not self.processor.scheduler_manager.is_scheduler_active():
@@ -373,7 +373,7 @@ class DataCommandHandler:
                 pass
         current[last_key] = value  # Set the value
         await self.processor.indices_manager.update_index_on_add(parts, last_key, value, entity_key)  # Update the index
-        self.processor.cache_handler.remove_from_cache(entity_key)  # Invalidate cache entries
+        await self.processor.cache_handler.remove_from_cache(entity_key)  # Invalidate cache entries
         full_key = ':'.join(parts)
         await self.processor.sub_pub_manager.notify_subscribers(full_key, current)  # Notify subscribers
         AppState().data_has_changed = True
@@ -431,7 +431,7 @@ class DataCommandHandler:
             for key in base_path:
                 current = current[key]
             deleted_count = recursive_delete(current)  # Recursively delete keys
-            self.processor.cache_handler.remove_from_cache(base_path)  # Invalidate cache entries
+            await self.processor.cache_handler.remove_from_cache(base_path)  # Invalidate cache entries
             AppState().data_has_changed = True
             if not self.processor.scheduler_manager.is_scheduler_active():
                 self.processor.data_manager.save_data()  # Save data if scheduler is not active
@@ -464,7 +464,7 @@ class DataCommandHandler:
                     self.processor.data_manager.save_data()  # Save data if scheduler is not active
 
                 # Invalidate cache entries related to the base key
-                self.processor.cache_handler.remove_from_cache(base_key)  # Invalidate cache entries
+                await self.processor.cache_handler.remove_from_cache(base_key)  # Invalidate cache entries
                 
                 return "OK"
             else:
@@ -609,7 +609,7 @@ class QueryCommandHandler:
             limit_str = f"LIMIT({limit_values})" if isinstance(limit_values, str) else f"LIMIT({limit_values[0]},{limit_values[1]})"
             conditions = conditions.replace(limit_str, "").strip()
         if not await self.processor.sharding_manager.has_sharding_is_sharding_master():
-            local_results = self.process_local_query(root, conditions, modifiers)  # Process the query locally
+            local_results = await self.process_local_query(root, conditions, modifiers)  # Process the query locally
             if isinstance(local_results, str):
                 return local_results
             return json.dumps(local_results)
@@ -617,7 +617,7 @@ class QueryCommandHandler:
         port = AppState().config_store.get('PORT')
         shard_uris = [f"{shard}:{port}" for shard in AppState().config_store.get('SHARDS') if shard != host]  # Get the URIs of the shards
         remote_results = await self.processor.sharding_manager.broadcast_query(f'QUERY {root} {conditions}', shard_uris)  # Broadcast the query to shards
-        local_results = self.process_local_query(root, conditions, modifiers)  # Process the query locally
+        local_results = await self.process_local_query(root, conditions, modifiers)  # Process the query locally
         if isinstance(remote_results, list) and len(remote_results) == 1 and isinstance(remote_results[0], str):
             remote_results = remote_results[0]
         combined_results = local_results if isinstance(local_results, (str, int, float)) else local_results + remote_results  # Combine local and remote results
@@ -626,7 +626,7 @@ class QueryCommandHandler:
             return str(final_results)
         return json.dumps(final_results)
 
-    def process_local_query(self, root, conditions, modifiers=None):
+    async def process_local_query(self, root, conditions, modifiers=None):
         """Processes a query locally."""
         key_parts = root.split(':')
         main_key = key_parts[0]  # Get the main key
@@ -635,7 +635,7 @@ class QueryCommandHandler:
 
         # Check the cache first
         command = f"QUERY {root} {conditions} {modifiers}".strip() # Construct the full command for caching purposes
-        cache_result = self.processor.cache_handler.get_cache(command)
+        cache_result = await self.processor.cache_handler.get_cache(command)
         if cache_result is not None:
             return cache_result
 
@@ -675,7 +675,7 @@ class QueryCommandHandler:
 
         # Add the result to the cache
         if results:
-            self.processor.cache_handler.add_to_cache(command, root, results)
+            await self.processor.cache_handler.add_to_cache(command, root, results)
 
         return results
 
