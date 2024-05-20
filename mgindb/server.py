@@ -9,6 +9,7 @@ from .scheduler import SchedulerManager  # Scheduler management
 from .data_manager import DataManager  # Data management
 from .indices_manager import IndicesManager  # Indices management
 from .replication_manager import ReplicationManager  # Replication management
+from .cache_manager import CacheManager  # Cache management
 
 class ServerManager:
     def __init__(self):
@@ -20,6 +21,7 @@ class ServerManager:
         self.data_manager = DataManager()  # Manages data
         self.indices_manager = IndicesManager()  # Manages indices
         self.replication_manager = ReplicationManager()  # Manages replication
+        self.cache_manager = CacheManager()  # Manages cache
 
     async def start_server(self):
         """
@@ -58,6 +60,10 @@ class ServerManager:
             # Load scheduler
             self.scheduler_manager.load_scheduler()  # Load the scheduler
             print("Loading scheduler...")  # Print message indicating scheduler loading
+
+            # Load cache manager
+            if self.cache_manager.has_caching():
+                print("Loading cache manager")
 
             # Load data
             self.data_manager.load_data()  # Load data

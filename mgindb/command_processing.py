@@ -673,9 +673,9 @@ class QueryCommandHandler:
             results = self.processor.command_utils_manager.apply_query_modifiers(results, modifiers)  # Apply query modifiers
         results = [self.processor.command_utils_manager.filter_fields(entry, include_fields, exclude_fields) for entry in results]  # Filter fields
 
-        # Add the result to the cache with a TTL of 5 minutes (300 seconds)
+        # Add the result to the cache
         if results:
-            self.processor.cache_handler.add_to_cache(command, root, results, ttl=300)
+            self.processor.cache_handler.add_to_cache(command, root, results)
 
         return results
 

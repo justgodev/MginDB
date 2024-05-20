@@ -15,6 +15,8 @@ config = {
     "SAVE_ON_FILE_INTERVAL": "15",  # Interval for saving data to file (in minutes)
     "BACKUP_ON_SHUTDOWN": "0",  # Disable backup on shutdown by default
     "SCHEDULER": "1",  # Enable scheduler by default
+    "QUERY_CACHING": "1",  # Enable query caching by default
+    "QUERY_CACHING_TTL": "300",  # Query caching time to live
     "REPLICATION": "0",  # Disable replication by default
     "REPLICATION_TYPE": "MASTER",  # Default replication type
     "REPLICATION_MASTER": "",  # Placeholder for replication master address
