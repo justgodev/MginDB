@@ -12,3 +12,4 @@ mgindb/.DS_Store
 mgindb/__pycache__
 mgindb/backup
 mgindb/data
+mginDB.code-workspace
