@@ -63,7 +63,7 @@ class ServerManager:
 
             # Load cache manager
             if await self.cache_manager.has_caching():
-                print("Loading cache manager")
+                print("Loading cache manager...")
 
             # Load data
             self.data_manager.load_data()  # Load data
@@ -75,15 +75,15 @@ class ServerManager:
 
             # Setup replication
             if await self.replication_manager.has_replication_is_replication_master():  # Check if this instance is a replication master
-                print("Activating master replication...")  # Print message for master replication activation
+                print("Loading master replication...")  # Print message for master replication activation
 
             if await self.replication_manager.has_replication_is_replication_slave():  # Check if this instance is a replication slave
-                print("Activating slave replication...")  # Print message for slave replication activation
+                print("Loading slave replication...")  # Print message for slave replication activation
                 await self.replication_manager.request_full_replication()  # Request full replication from the master
 
             # Start scheduler if active
             if self.scheduler_manager.is_scheduler_active():  # Check if the scheduler is active
-                print("Starting scheduler...")  # Print message indicating scheduler starting
+                print("Loading scheduler...")  # Print message indicating scheduler starting
                 await self.scheduler_manager.start_scheduler()  # Start the scheduler
 
             # Start WebSocket server

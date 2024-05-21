@@ -36,15 +36,15 @@ class SchedulerManager:
         """Start the scheduler if it is not already running."""
         if not self.is_scheduler_running():
             self.app_state.scheduler_task = asyncio.create_task(self.scheduler_tasks.run_scheduler())
-            print("Scheduler has started.")
-            return "Scheduler has started."
+            print("Scheduler has started...")
+            return "Scheduler has started..."
 
     async def stop_scheduler(self):
         """Stop the scheduler if it is running."""
         if self.is_scheduler_running():
             self.app_state.scheduler_task.cancel()
-            print("Scheduler has stopped.")
-            return "Scheduler has stopped."
+            print("Scheduler has stopped...")
+            return "Scheduler has stopped..."
 
     def schedule_command(self, args):
         """Handle schedule-related commands."""
