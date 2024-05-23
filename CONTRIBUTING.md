@@ -39,10 +39,4 @@ Write clear and concise commit messages. Each commit should represent a single l
 
 ### 6. Contributor License Agreement (CLA)
 
-Before we can accept your contributions, you need to sign our Contributor License Agreement (CLA). This ensures that we have the necessary rights to use and distribute your contributions. You can sign the CLA by filling out the form in `CLA.md` and submitting it to info@mgindb.com.
-
-Example:
-```plaintext
-feat(authentication): add OAuth2 support
-
-fix(login): resolve issue with session persistence
+Before we can accept your contributions, you need to sign our Contributor License Agreement (CLA). This ensures that we have the necessary rights to use and distribute your contributions. You can sign the CLA by filling out the form in `CLA.md` and submitting it to info@mgindb.com
