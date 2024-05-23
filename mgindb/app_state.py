@@ -15,7 +15,7 @@ class AppState:
             # Initialize attributes
             cls.websocket = None  # WebSocket connection placeholder
             cls.mgindb_url = 'https://mgindb.com'  # URL for MginDB
-            cls.version = '0.1.0'  # Version of the application
+            cls.version = '0.1.1'  # Version of the application
             cls.license = None  # License information
             cls.auth_data = {}  # Authentication data
             cls.scheduler_task = None  # Current scheduler task
