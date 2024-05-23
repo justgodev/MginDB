@@ -37,6 +37,10 @@ Write clear and concise commit messages. Each commit should represent a single l
 - **Format**: Use the format `type(scope): description`.
 - **Types**: Use `feat` for new features, `fix` for bug fixes, `docs` for documentation updates, `style` for code style changes, `refactor` for code refactoring, `test` for adding or updating tests, and `chore` for other changes.
 
+### 6. Contributor License Agreement (CLA)
+
+Before we can accept your contributions, you need to sign our Contributor License Agreement (CLA). This ensures that we have the necessary rights to use and distribute your contributions. You can sign the CLA by filling out the form in `CLA.md` and submitting it to info@mgindb.com.
+
 Example:
 ```plaintext
 feat(authentication): add OAuth2 support
