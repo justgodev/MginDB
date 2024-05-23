@@ -11,7 +11,7 @@ Thank you for your interest in contributing to [Project Name]. Here are the guid
 
 ## Contributor License Agreement (CLA)
 
-Before we can accept your contributions, you need to sign our Contributor License Agreement (CLA). This ensures that we have the necessary rights to use and distribute your contributions. You can sign the CLA [here](link-to-CLA-form).
+Before we can accept your contributions, you need to sign our Contributor License Agreement (CLA). This ensures that we have the necessary rights to use and distribute your contributions. You can sign the CLA https://github.com/justgodev/MginDB/blob/main/CLA.md.
 
 ## Licensing
 
