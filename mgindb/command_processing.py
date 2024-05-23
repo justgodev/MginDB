@@ -269,8 +269,10 @@ class DataCommandHandler:
             if not match:
                 responses.append("ERROR: Invalid SET syntax")
                 continue
+
             key_pattern = match.group(1)  # Get the key pattern
             raw_value = match.group(2)  # Get the raw value
+
             if 'EXPIRE' in raw_value and not self.processor.scheduler_manager.is_scheduler_active():
                 return "Scheduler is not active. Run the command CONFIG SET SCHEDULER 1 to activate"
             value, expiry = self.processor.command_utils_manager.parse_value_instructions(raw_value)  # Parse the value instructions
@@ -278,9 +280,11 @@ class DataCommandHandler:
             value = self.processor.command_utils_manager.handle_expression_functions(value, context)  # Handle expression functions
             parts = key_pattern.split(':')  # Split the key pattern by ':'
             sharding_key = ':'.join(parts[:2]) if len(parts) > 1 else parts[0]  # Get the sharding key
+
             if '*' in parts and sharding_active:
                 responses.append("ERROR: Wildcard operations are not supported in sharding mode.")
                 continue
+
             shard_result = await self.processor.sharding_manager.check_sharding('SET', command, sharding_key)  # Check sharding for SET command
             if shard_result != "ERROR" and shard_result != 'LOCAL':
                 responses.append("OK")
@@ -288,6 +292,7 @@ class DataCommandHandler:
             elif shard_result == "ERROR":
                 responses.append("ERROR: Sharding failed")
                 continue
+
             if '*' in parts:
                 base_path = parts[:parts.index('*')]  # Get the base path
                 last_key = parts[-1]  # Get the last key
@@ -296,11 +301,14 @@ class DataCommandHandler:
             else:
                 response = await self.set_specific_key(parts, value)  # Set a specific key
                 responses.append(response)
+
             if expiry:
                 AppState().expires_store[key_pattern] = expiry  # Set the expiry
+
             if await self.processor.replication_manager.has_replication_is_replication_master():
                 replication_command = f"SET {':'.join(parts)} {value}"
                 await self.processor.replication_manager.send_command_to_slaves(replication_command)  # Replicate the command to slaves
+
         return '\n'.join(responses)
 
     async def set_keys_wildcard(self, base_path, last_key, value, data_store):
@@ -309,6 +317,7 @@ class DataCommandHandler:
             parsed_value = json.loads(value)  # Parse the value as JSON
         except json.JSONDecodeError:
             parsed_value = value
+
         if isinstance(parsed_value, dict):
             total_updated_count = 0
             for key, val in parsed_value.items():
@@ -333,13 +342,16 @@ class DataCommandHandler:
                 elif base_path[depth] in current:
                     return await recursive_set(current[base_path[depth]], depth + 1)
                 return 0
+
             updated_count = await recursive_set(data_store, 0)  # Recursively set keys
             if updated_count > 0:
                 full_key = ':'.join(base_path + [last_key])
                 full_data = data_store
                 await self.processor.cache_handler.remove_from_cache(base_path)  # Invalidate cache entries
                 await self.processor.sub_pub_manager.notify_subscribers(full_key, full_data)  # Notify subscribers
+
             AppState().data_has_changed = True
+
             if not self.processor.scheduler_manager.is_scheduler_active():
                 self.processor.data_manager.save_data()  # Save data if scheduler is not active
             return updated_count
@@ -364,21 +376,28 @@ class DataCommandHandler:
             current = current.setdefault(part, {})  # Navigate to the appropriate part of the data store
         last_key = parts[-1]
         entity_key = ':'.join(parts[:2]) if len(parts) > 2 else parts[0]
+
         if last_key in current and current[last_key] != value:
             await self.processor.indices_manager.update_index_on_remove(parts, last_key, current[last_key], entity_key)
+
         if isinstance(value, str) and value.startswith('[') and value.endswith(']'):
             try:
                 value = json.loads(value)
             except json.JSONDecodeError:
                 pass
+
         current[last_key] = value  # Set the value
         await self.processor.indices_manager.update_index_on_add(parts, last_key, value, entity_key)  # Update the index
         await self.processor.cache_handler.remove_from_cache(entity_key)  # Invalidate cache entries
+
         full_key = ':'.join(parts)
         await self.processor.sub_pub_manager.notify_subscribers(full_key, current)  # Notify subscribers
+
         AppState().data_has_changed = True
+
         if not self.processor.scheduler_manager.is_scheduler_active():
             self.processor.data_manager.save_data()  # Save data if scheduler is not active
+
         return "OK"
 
     async def del_command(self, args):
@@ -386,15 +405,18 @@ class DataCommandHandler:
         commands = args.split('|')  # Split the commands by '|'
         responses = []
         sharding_active = await self.processor.sharding_manager.has_sharding()  # Check if sharding is active
+
         for command in commands:
             parts = command.strip().split(':')
             if not parts or '' in parts:
                 responses.append("ERROR: Invalid DEL syntax")
                 continue
             shard_key = ':'.join(parts[:2]) if len(parts) > 1 else parts[0]  # Get the sharding key
+
             if '*' in parts and sharding_active:
                 responses.append("ERROR: Wildcard deletions are not supported in sharding mode.")
                 continue
+
             shard_result = await self.processor.sharding_manager.check_sharding('DEL', command, shard_key)  # Check sharding for DEL command
             if shard_result not in ["ERROR", "LOCAL"]:
                 responses.append("OK")
@@ -402,6 +424,7 @@ class DataCommandHandler:
             elif shard_result == "ERROR":
                 responses.append(shard_result)
                 continue
+
             if '*' in parts:
                 base_path = parts[:parts.index('*')]  # Get the base path
                 last_key = parts[-1]  # Get the last key
@@ -410,8 +433,10 @@ class DataCommandHandler:
             else:
                 response = await self.delete_specific_key(parts)  # Delete a specific key
                 responses.append(response)
+
             if await self.processor.replication_manager.has_replication_is_replication_master():
                 await self.processor.replication_manager.send_command_to_slaves(f"DEL {command}")  # Replicate the command to slaves
+
         return '\n'.join(responses)
 
     async def delete_keys_wildcard(self, base_path, last_key, data_store):
@@ -446,6 +471,7 @@ class DataCommandHandler:
             current_data = AppState().data_store
             for part in parts[:-1]:
                 current_data = current_data[part]
+
             key_to_delete = parts[-1]
             if key_to_delete in current_data:
                 value_to_remove = current_data[key_to_delete]
@@ -457,9 +483,12 @@ class DataCommandHandler:
                     else:
                         remove_field_parts = parts
                     await self.processor.indices_manager.remove_field_from_index(remove_field_parts[:-1], key_to_delete, value_to_remove)  # Remove field from index
+
                 del current_data[key_to_delete]  # Delete the key
                 self.processor.command_utils_manager.cleanup_empty_dicts(AppState().data_store, parts[:-1])  # Clean up empty dictionaries
+
                 AppState().data_has_changed = True
+
                 if not self.processor.scheduler_manager.is_scheduler_active():
                     self.processor.data_manager.save_data()  # Save data if scheduler is not active
 
@@ -478,43 +507,55 @@ class DataCommandHandler:
         """Handles the INCR and DECR commands."""
         commands = args.split('|')  # Split the commands by '|'
         responses = []
+
         for command in commands:
             parts = command.strip().split()
             if len(parts) < 2:
                 responses.append("ERROR: Invalid syntax")
                 continue
             keys = parts[0].split(':')
+
             try:
                 amount = float(parts[1]) if '.' in parts[1] else int(parts[1])
             except ValueError:
                 responses.append("ERROR: Invalid amount")
                 continue
+
             shard_key = f'{keys[0]}:{keys[1]}' if len(keys) > 1 else keys[0]  # Get the sharding key
             shard_command = 'INCR' if increment else 'DECR'
             shard_result = await self.processor.sharding_manager.check_sharding(shard_command, command.strip(), shard_key)  # Check sharding for INCR/DECR command
+
             if shard_result != "ERROR" and shard_result != 'LOCAL':
                 responses.append("OK")
                 continue
             elif shard_result == "ERROR":
                 responses.append(shard_result)
                 continue
+
             data = self.processor.command_utils_manager.get_nested_value(AppState().data_store, keys)  # Get the current value
             if data is None:
                 data = 0
             original_type = float if isinstance(data, float) or isinstance(amount, float) else int
             new_value = data + amount if increment else data - amount  # Calculate the new value
+
             if original_type is int:
                 new_value = int(new_value)
+
             new_data = self.processor.command_utils_manager.set_nested_value(AppState().data_store, keys, new_value)  # Set the new value
+
             AppState().data_has_changed = True
+
             if not self.processor.scheduler_manager.is_scheduler_active():
                 self.processor.data_manager.save_data()  # Save data if scheduler is not active
+
             key = ":".join(keys)
             await self.processor.sub_pub_manager.notify_subscribers(key, new_data)  # Notify subscribers
             responses.append("OK")
+
             if await self.processor.replication_manager.has_replication_is_replication_master():
                 replication_command = 'INCR' if increment else 'DECR'
                 await self.processor.replication_manager.send_command_to_slaves(f"{replication_command} {command}")  # Replicate the command to slaves
+
         return '\n'.join(responses)
 
     async def rename_command(self, args):
@@ -526,14 +567,17 @@ class DataCommandHandler:
         path_parts = path.split(':')
         new_key = new_key.strip()
         sharding_key = ':'.join(path_parts[:2]) if len(path_parts) > 1 else path_parts[0]  # Get the sharding key
+
         shard_result = await self.processor.sharding_manager.check_sharding('RENAME', path, sharding_key)  # Check sharding for RENAME command
         if shard_result != "ERROR" and shard_result != 'LOCAL':
             return "OK"
         elif shard_result == "ERROR":
             return "ERROR: Sharding failed"
+
         if '*' in path_parts:
             base_path = path_parts[:path_parts.index('*')]  # Get the base path
             target_key = path_parts[-1]  # Get the target key
+
             def recursive_rename(current, depth):
                 if depth == len(base_path):
                     keys_renamed = 0
@@ -545,12 +589,17 @@ class DataCommandHandler:
                 elif base_path[depth] in current:
                     return recursive_rename(current[base_path[depth]], depth + 1)
                 return 0
+
             keys_renamed = recursive_rename(AppState().data_store, 0)  # Recursively rename keys
+
             AppState().data_has_changed = True
+
             if not self.processor.scheduler_manager.is_scheduler_active():
                 self.processor.data_manager.save_data()  # Save data if scheduler is not active
+
             if await self.processor.replication_manager.has_replication_is_replication_master():
                 await self.processor.replication_manager.send_command_to_slaves(f"RENAME {command}")  # Replicate the command to slaves
+
             return f"RENAME successful: {keys_renamed} keys renamed." if keys_renamed else "Nothing to rename"
         else:
             current = AppState().data_store
@@ -559,11 +608,14 @@ class DataCommandHandler:
                     current = current[part]
                 else:
                     return "ERROR: Path not found"
+
             if path_parts[-1] in current:
                 current[new_key] = current.pop(path_parts[-1])  # Rename the key
                 AppState().data_has_changed = True
+
                 if not self.processor.scheduler_manager.is_scheduler_active():
                     self.processor.data_manager.save_data()  # Save data if scheduler is not active
+
                 if await self.processor.replication_manager.has_replication_is_replication_master():
                     await self.processor.replication_manager.send_command_to_slaves(f"RENAME {command}")  # Replicate the command to slaves
                 return "RENAME successful: 1 key renamed."
@@ -579,11 +631,13 @@ class DataCommandHandler:
         self.processor.cache_handler.flush_cache  # Clear cached data
         self.processor.data_manager.save_data()  # Save the data
         self.processor.indices_manager.save_indices()  # Save the indices
+
         if await self.processor.sharding_manager.has_sharding_is_sharding_master():
             shards = AppState().config_store.get('SHARDS')
             shard_uris = [f"{shard}:{port}" for shard in shards if shard != host]  # Get the URIs of the shards
             results = await self.processor.sharding_manager.broadcast_query('FLUSHALL', shard_uris)  # Broadcast FLUSHALL command to shards
             print("Flush results from remote shards:", results)
+
         return "All indices and data flushed successfully."
 
 class QueryCommandHandler:
@@ -601,29 +655,38 @@ class QueryCommandHandler:
         modifiers, conditions = self.processor.command_utils_manager.parse_modifiers(conditions)  # Parse the modifiers
         group_by_key = None
         limit_values = None
+
         if 'group_by' in modifiers:
             group_by_key = modifiers['group_by']
             conditions = conditions.replace(f"GROUPBY({group_by_key})", "").strip()
+
         if 'limit' in modifiers:
             limit_values = modifiers['limit']
             limit_str = f"LIMIT({limit_values})" if isinstance(limit_values, str) else f"LIMIT({limit_values[0]},{limit_values[1]})"
             conditions = conditions.replace(limit_str, "").strip()
+
         if not await self.processor.sharding_manager.has_sharding_is_sharding_master():
             local_results = await self.process_local_query(root, conditions, modifiers)  # Process the query locally
+
             if isinstance(local_results, str):
                 return local_results
             return json.dumps(local_results)
+
         host = AppState().config_store.get('HOST')
         port = AppState().config_store.get('PORT')
         shard_uris = [f"{shard}:{port}" for shard in AppState().config_store.get('SHARDS') if shard != host]  # Get the URIs of the shards
         remote_results = await self.processor.sharding_manager.broadcast_query(f'QUERY {root} {conditions}', shard_uris)  # Broadcast the query to shards
         local_results = await self.process_local_query(root, conditions, modifiers)  # Process the query locally
+
         if isinstance(remote_results, list) and len(remote_results) == 1 and isinstance(remote_results[0], str):
             remote_results = remote_results[0]
+
         combined_results = local_results if isinstance(local_results, (str, int, float)) else local_results + remote_results  # Combine local and remote results
         final_results = self.processor.command_utils_manager.apply_query_modifiers(combined_results, modifiers)  # Apply query modifiers
+
         if isinstance(final_results, (str, int, float)):
             return str(final_results)
+
         return json.dumps(final_results)
 
     async def process_local_query(self, root, conditions, modifiers=None):
@@ -641,19 +704,24 @@ class QueryCommandHandler:
 
         if conditions.startswith("WHERE "):
             conditions = conditions[6:].strip()  # Remove 'WHERE' from the conditions
+
         include_fields, exclude_fields, conditions = self.processor.command_utils_manager.parse_and_clean_fields(conditions)  # Parse and clean fields
         joins, conditions = self.processor.command_utils_manager.extract_join_clauses(conditions)  # Extract join clauses
         data_to_query = AppState().data_store.get(main_key, {})  # Get the data to query
+
         if specific_key:
             specific_entry = data_to_query.get(specific_key)
+
             if isinstance(specific_entry, dict) and sub_key_path:
                 for key in sub_key_path:
                     if key in specific_entry:
                         specific_entry = specific_entry[key]
                     else:
                         break
+
             if not isinstance(specific_entry, dict):
                 specific_entry = self.processor.data_manager.process_nested_data(specific_entry)  # Process nested data
+
             for join_table, join_key in joins:
                 join_value = str(specific_entry.get(join_key))
                 join_ids = AppState().indices.get(join_table, {}).get(join_key, {}).get(join_value, [])
@@ -662,7 +730,9 @@ class QueryCommandHandler:
                     for jid in join_ids if jid.split(':')[1] in AppState().data_store[join_table]
                 ]
                 specific_entry.setdefault(join_table, []).extend(joined_data)
+
             results = self.processor.command_utils_manager.format_as_list(specific_entry)  # Format as list
+
         elif conditions:
             results = self.processor.command_utils_manager.eval_conditions_using_indices(conditions, AppState().indices, main_key, joins)  # Evaluate conditions using indices
             results = self.processor.command_utils_manager.format_as_list(results)  # Format as list
@@ -671,6 +741,7 @@ class QueryCommandHandler:
 
         if modifiers:
             results = self.processor.command_utils_manager.apply_query_modifiers(results, modifiers)  # Apply query modifiers
+
         results = [self.processor.command_utils_manager.filter_fields(entry, include_fields, exclude_fields) for entry in results]  # Filter fields
 
         # Add the result to the cache
@@ -686,40 +757,50 @@ class ShardCommandHandler:
     async def replicate_command(self, *args, **kwargs):
         """Handles the REPLICATE command."""
         websocket = AppState().websocket
+
         if await self.processor.replication_manager.has_replication_is_replication_master():
             data = json.dumps(AppState().data_store)  # Get the data as a JSON string
             indices = json.dumps(AppState().indices)  # Get the indices as a JSON string
             CHUNK_SIZE = 5000
             data_chunks = [data[i:i+CHUNK_SIZE] for i in range(0, len(data), CHUNK_SIZE)]  # Split the data into chunks
             indices_chunks = [indices[i:i+CHUNK_SIZE] for i in range(0, len(indices), CHUNK_SIZE)]  # Split the indices into chunks
+
             for data_chunk in data_chunks:
                 await websocket.send(json.dumps({'data_chunks': [data_chunk], 'indices_chunks': []}))  # Send data chunks
+
             for indices_chunk in indices_chunks:
                 await websocket.send(json.dumps({'data_chunks': [], 'indices_chunks': [indices_chunk]}))  # Send indices chunks
+
             await websocket.send('DONE')  # Send DONE signal
 
     async def reshard_command(self, *args, **kwargs):
         """Handles the RESHARD command."""
         AppState().data_has_changed = True
         AppState().indices_has_changed = True
+
         self.processor.data_manager.save_data()  # Save the data
         self.processor.indices_manager.save_indices()  # Save the indices
         self.processor.backup_manager.backup_data()  # Backup the data
+
         if await self.processor.sharding_manager.is_sharding_master():
             return json.dumps(await self.processor.sharding_manager.reshard())  # Reshard if sharding master
         else:
             local_data = self.processor.data_manager.get_all_local_data()  # Get all local data
             local_indices = self.processor.indices_manager.get_all_local_indices()  # Get all local indices
+
             AppState().data_store.clear()  # Clear the data store
             AppState().indices.clear()  # Clear the indices
             AppState().data_has_changed = True
             AppState().indices_has_changed = True
+
             self.processor.data_manager.save_data()  # Save the data
             self.processor.indices_manager.save_indices()  # Save the indices
             prepared_data = self.processor.sharding_manager.prepare_data_for_transmission(local_data)  # Prepare data for transmission
             prepared_indices = self.processor.sharding_manager.prepare_data_for_transmission(local_indices)  # Prepare indices for transmission
+
             response = {
                 "local_data": prepared_data,
                 "local_indices": prepared_indices
             }
+
             return json.dumps(response)  # Return the response as a JSON string
