@@ -97,7 +97,7 @@ class ServerManager:
             print("Starting websocket...")  # Print message indicating WebSocket starting
             host = self.app_state.config_store.get('HOST')  # Get host from config
             port = self.app_state.config_store.get('PORT')  # Get port from config
-            await websockets.serve(handle_websocket, host, port)  # Start the WebSocket server
+            await websockets.serve(lambda ws, path: handle_websocket(ws, path, self.thread_executor, self.process_executor), host, port)  # Start the WebSocket server
             print(f"WebSocket serving on {host}:{port}")  # Print message with WebSocket server details
 
             # Wait for stop signal

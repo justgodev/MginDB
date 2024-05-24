@@ -16,7 +16,7 @@ from .replication_manager import ReplicationManager  # Replication management
 from .cache_manager import CacheManager  # Replication management
 
 class CommandProcessor:
-    def __init__(self):
+    def __init__(self, thread_executor, process_executor):
         # Initialize various managers and handlers
         self.updater = UpdateManager()  # Manages updates
         self.scheduler_manager = SchedulerManager()  # Manages the scheduler
@@ -32,6 +32,8 @@ class CommandProcessor:
         self.query_handler = QueryCommandHandler(self)  # Handles query commands
         self.shard_handler = ShardCommandHandler(self)  # Handles shard commands
         self.cache_handler = CacheManager()  # Handles cache commands
+        self.thread_executor = thread_executor
+        self.process_executor = process_executor
 
     async def process_command(self, command_line, sid=False):
         """Processes a command line input."""

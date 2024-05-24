@@ -5,9 +5,9 @@ from .connection_handler import asyncio, websockets, signal, stop_event, signal_
 from .command_processing import CommandProcessor  # Importing CommandProcessor class from command_processing module
 
 class WebSocketManager:
-    def __init__(self):
+    def __init__(self, thread_executor, process_executor):
         """Initialize WebSocketManager with a command processor."""
-        self.command_processor = CommandProcessor()
+        self.command_processor = CommandProcessor(thread_executor, process_executor)
     
     async def handle_websocket(self, websocket, path):
         """Handle a new WebSocket connection."""
@@ -90,6 +90,6 @@ class WebSocketSession:
             await self.websocket.send(response)
 
 # Original function to handle websockets using the new WebSocketManager
-async def handle_websocket(websocket, path):
+async def handle_websocket(websocket, path, thread_executor, process_executor):
     """Handle WebSocket connections using WebSocketManager."""
-    await WebSocketManager().handle_websocket(websocket, path)
+    await WebSocketManager(thread_executor, process_executor).handle_websocket(websocket, path)
