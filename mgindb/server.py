@@ -10,6 +10,11 @@ from .data_manager import DataManager  # Data management
 from .indices_manager import IndicesManager  # Indices management
 from .replication_manager import ReplicationManager  # Replication management
 from .cache_manager import CacheManager  # Cache management
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+import uvloop
+
+# Use uvloop for a faster event loop
+asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 class ServerManager:
     def __init__(self):
@@ -22,6 +27,8 @@ class ServerManager:
         self.indices_manager = IndicesManager()  # Manages indices
         self.replication_manager = ReplicationManager()  # Manages replication
         self.cache_manager = CacheManager()  # Manages cache
+        self.thread_executor = ThreadPoolExecutor()  # Thread pool for I/O-bound tasks
+        self.process_executor = ProcessPoolExecutor()  # Process pool for CPU-bound tasks
 
     async def start_server(self):
         """
@@ -66,11 +73,11 @@ class ServerManager:
                 print("Loading cache manager...")
 
             # Load data
-            self.data_manager.load_data()  # Load data
+            await self.run_in_executor(self.data_manager.load_data)  # Load data asynchronously
             print("Loading data...")  # Print message indicating data loading
 
             # Load indices
-            self.indices_manager.load_indices()  # Load indices
+            await self.run_in_executor(self.indices_manager.load_indices)  # Load indices asynchronously
             print("Loading indices...")  # Print message indicating indices loading
 
             # Setup replication
@@ -101,6 +108,16 @@ class ServerManager:
 
         except Exception as e:
             print(f"Failed to start MginDB: {e}")  # Print error message if server fails to start
+
+    async def run_in_executor(self, func, *args):
+        """
+        Run a blocking function in a separate thread or process.
+        
+        This helper function allows running blocking functions in a separate thread
+        or process to prevent blocking the asyncio event loop.
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self.thread_executor, func, *args)
 
 if __name__ == '__main__':
     # Register signal handlers for graceful shutdown

@@ -8,3 +8,4 @@ uuid
 croniter
 prompt_toolkit
 requests
+uvloop

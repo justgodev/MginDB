@@ -17,7 +17,8 @@ setup(
         'websockets',
         'uuid',
         'croniter',
-        'requests'
+        'requests',
+        'uvloop'
     ],
     entry_points={
         'console_scripts': [
