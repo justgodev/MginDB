@@ -405,6 +405,7 @@ class DataCommandHandler:
         current = AppState().data_store
         for part in parts[:-1]:
             current = current.setdefault(part, {})  # Navigate to the appropriate part of the data store
+        base_key = parts[0]
         last_key = parts[-1]
         entity_key = ':'.join(parts[:2]) if len(parts) > 2 else parts[0]
 
@@ -419,7 +420,7 @@ class DataCommandHandler:
 
         current[last_key] = value  # Set the value
         await self.processor.indices_manager.update_index_on_add(parts, last_key, value, entity_key)  # Update the index
-        await self.processor.cache_handler.remove_from_cache(entity_key)  # Invalidate cache entries
+        await self.processor.cache_handler.remove_from_cache(base_key)  # Invalidate cache entries
 
         full_key = ':'.join(parts)
         await self.processor.sub_pub_manager.notify_subscribers(full_key, current)  # Notify subscribers

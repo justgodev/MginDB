@@ -35,6 +35,9 @@ class CacheManager:
 
     async def remove_from_cache(self, query_key):
         if await self.has_caching():
+            #print(f"Removing cache entries related to query key: {query_key}")
+            
+            # Remove specific key
             if query_key in self.app_state.data_store_key_command_mapping:
                 related_commands = self.app_state.data_store_key_command_mapping.pop(query_key)
                 for command in related_commands:
@@ -43,7 +46,7 @@ class CacheManager:
                     if command in self.app_state.data_store_cache_keys_expiration:
                         del self.app_state.data_store_cache_keys_expiration[command]
 
-            # Also remove broader queries that depend on this key
+            # Remove broader queries that depend on this key
             keys_to_remove = []
             for key, commands in self.app_state.data_store_key_command_mapping.items():
                 if query_key in key:
@@ -60,7 +63,10 @@ class CacheManager:
                         keys_to_remove.append(key)
 
             for key in keys_to_remove:
+                #print(f"Removing broader cache key: {key}")
                 del self.app_state.data_store_key_command_mapping[key]
+
+            #print(f"Cache after removal: {self.app_state.data_store_cache}")
 
     async def cleanup_expired_entries(self):
         if await self.has_caching():
