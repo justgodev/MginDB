@@ -86,7 +86,7 @@ class ServerManager:
 
             if await self.replication_manager.has_replication_is_replication_slave():  # Check if this instance is a replication slave
                 print("Loading slave replication...")  # Print message for slave replication activation
-                await self.replication_manager.request_full_replication()  # Request full replication from the master
+                await self.replication_manager.request_full_replication(self.scheduler_manager, self.data_manager, self.indices_manager)  # Request full replication from the master
 
             # Start scheduler if active
             if self.scheduler_manager.is_scheduler_active():  # Check if the scheduler is active

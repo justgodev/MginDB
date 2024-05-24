@@ -61,7 +61,7 @@ class ReplicationManager:
         replication = self.app_state.config_store.get('REPLICATION')
         return replication_type == 'SLAVE' and replication == '1'
 
-    async def request_full_replication(self):
+    async def request_full_replication(self, scheduler_manager, data_manager, indices_manager):
         """
         Request full replication from the replication master.
 
@@ -92,14 +92,14 @@ class ReplicationManager:
 
                     # After all chunks are received, process them
                     print("Replication chunks received. Processing data...")
-                    await self.process_replication_data({'data_chunks': data_chunks, 'indices_chunks': indices_chunks})
+                    await self.process_replication_data({'data_chunks': data_chunks, 'indices_chunks': indices_chunks}, scheduler_manager, data_manager, indices_manager)
                     return "Replication data received and processed."
                 else:
                     return "Authentication failed at master."
         except Exception as e:
             return f"Failed to communicate with master {master_uri}: {str(e)}"
 
-    async def process_replication_data(self, data):
+    async def process_replication_data(self, data, scheduler_manager, data_manager, indices_manager):
         """
         Process replication data received from the master.
 
@@ -122,6 +122,10 @@ class ReplicationManager:
             # Save the new state
             self.app_state.data_has_changed = True
             self.app_state.indices_has_changed = True
+            if not scheduler_manager.is_scheduler_active():
+                data_manager.save_data()  # Save data if scheduler is not active
+                indices_manager.save_indices()  # Save indices if scheduler is not active
+
             print("Replication data processed successfully.")
         except json.JSONDecodeError as e:
             print(f"Error decoding replication data: {e}")
