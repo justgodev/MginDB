@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='mgindb',
-    version='0.1.1',
+    version='0.1.2',
     packages=find_packages(),
     description='In-Memory, Schema-less and Limitless.',
     long_description=open('README.md').read(),
@@ -26,7 +26,7 @@ setup(
         ],
     },
     classifiers=[
-        'Development Status :: 0.1.0 - Public Release',
+        'Development Status :: 0.1.2 - Public Release',
         'Intended Audience :: Developers',
         'Natural Language :: English',
         'Operating System :: OS Independent',
