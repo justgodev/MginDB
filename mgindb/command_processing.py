@@ -1,6 +1,7 @@
 # Import necessary modules and classes
 import json  # Module for JSON operations
 import re  # Module for regular expressions
+import time  # Module for time
 from .app_state import AppState  # Application state management
 from .connection_handler import asyncio, signal_stop  # Asynchronous programming and signal handling
 from .config import save_config  # Function to save configuration
@@ -17,7 +18,9 @@ from .cache_manager import CacheManager  # Replication management
 
 class CommandProcessor:
     def __init__(self, thread_executor, process_executor):
-        # Initialize various managers and handlers
+        self.thread_executor = thread_executor
+        self.process_executor = process_executor
+        # Initialize other managers and handlers
         self.updater = UpdateManager()  # Manages updates
         self.scheduler_manager = SchedulerManager()  # Manages the scheduler
         self.sharding_manager = ShardingManager()  # Manages sharding
@@ -32,33 +35,49 @@ class CommandProcessor:
         self.query_handler = QueryCommandHandler(self)  # Handles query commands
         self.shard_handler = ShardCommandHandler(self)  # Handles shard commands
         self.cache_handler = CacheManager()  # Handles cache commands
-        self.thread_executor = thread_executor
-        self.process_executor = process_executor
+
+    async def run_in_executor(self, executor_type, func, *args):
+        """
+        Run a blocking function in a separate thread or process.
+
+        This helper function allows running blocking functions in a separate thread
+        or process to prevent blocking the asyncio event loop.
+
+        executor_type: 'thread' or 'process'
+        """
+        loop = asyncio.get_running_loop()
+        executor = self.thread_executor if executor_type == 'thread' else self.process_executor
+        #print(f"Running {func.__name__} in {'thread' if executor_type == 'thread' else 'process'} executor with args: {args}")
+        start_time = time.time()
+        result = await loop.run_in_executor(executor, func, *args)
+        end_time = time.time()
+        #print(f"Completed {func.__name__} in {end_time - start_time:.4f} seconds")
+        return result
 
     async def process_command(self, command_line, sid=False):
         """Processes a command line input."""
-        command, args = self.parse_command_line(command_line)  # Parse the command line
+        command, args = self.parse_command_line(command_line)
         if command:
-            await self.notify_if_sid(sid, command_line)  # Notify subscribers if sid is provided
-            result = self.execute_command(command, args, sid)  # Execute the command
-            return await self.handle_result(result)  # Handle the result of the command execution
+            await self.notify_if_sid(sid, command_line)
+            result = await self.execute_command(command, args, sid)
+            return await self.handle_result(result)
         else:
-            return "ERROR: Invalid command"  # Return error if command is invalid
+            return "ERROR: Invalid command"
 
     def parse_command_line(self, command_line):
         """Parses the command line input into command and arguments."""
-        command_line = command_line.replace('-f', '')  # Remove '-f' flag
-        tokens = command_line.split(maxsplit=1)  # Split the command line
-        command = tokens[0].upper()  # Extract the command
-        args = tokens[1] if len(tokens) > 1 else ""  # Extract the arguments
+        command_line = command_line.replace('-f', '')
+        tokens = command_line.split(maxsplit=1)
+        command = tokens[0].upper()
+        args = tokens[1] if len(tokens) > 1 else ""
         return command, args
 
     async def notify_if_sid(self, sid, command_line):
         """Notifies subscribers if sid is provided."""
         if sid:
-            await self.sub_pub_manager.notify_monitors(command_line, sid)  # Notify monitors
+            await self.sub_pub_manager.notify_monitors(command_line, sid)
 
-    def execute_command(self, command, args, sid):
+    async def execute_command(self, command, args, sid):
         """Executes the command based on the provided command and arguments."""
         commands = {
             'CHECKUPDATE': self.updater.check_update,
@@ -87,26 +106,36 @@ class CommandProcessor:
 
         if command in commands:
             func = commands[command]
-            if command in {'INCR', 'DECR'}:
-                return func(args, True if command == 'INCR' else False)  # Call increment/decrement command
-            elif command in {'CONFIG', 'SUB', 'UNSUB', 'MONITOR'}:
-                return func(args, sid)  # Call config, subscribe, unsubscribe, or monitor command
+            if asyncio.iscoroutinefunction(func):
+                #print(f"Command {command} is a coroutine function with args: {args}")
+                if command in {'INCR', 'DECR'}:
+                    return await func(args, True if command == 'INCR' else False)
+                elif command in {'CONFIG', 'SUB', 'UNSUB', 'MONITOR'}:
+                    return await func(args, sid)
+                else:
+                    return await func(args)
             else:
-                return func(args)  # Call other commands
+                #print(f"Command {command} is a blocking function, running in executor with args: {args}")
+                if command in {'INCR', 'DECR'}:
+                    return await self.run_in_executor('thread', func, args, True if command == 'INCR' else False)
+                elif command in {'CONFIG', 'SUB', 'UNSUB', 'MONITOR'}:
+                    return await self.run_in_executor('thread', func, args, sid)
+                else:
+                    return await self.run_in_executor('thread', func, args)
         else:
-            return None  # Return None if command is not found
+            return None
 
     async def handle_result(self, result):
         """Handles the result of a command execution."""
         if asyncio.iscoroutine(result):
-            return await result  # Await the result if it's a coroutine
+            return await result
         else:
-            return result  # Return the result directly
+            return result
 
     async def server_stop(self, *args, **kwargs):
         """Stops the server."""
-        await signal_stop()  # Signal to stop the server
-        return 'exit'  # Return 'exit' to indicate the server is stopping
+        await signal_stop()
+        return 'exit'
 
 class ConfigCommandHandler:
     def __init__(self, processor):
