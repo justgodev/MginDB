@@ -24,8 +24,8 @@ type AuthData struct {
     Password string `json:"password"`
 }
 
-func NewMginDBClient(host string, port int, username, password string) *MginDBClient {
-    uri := fmt.Sprintf("ws://%s:%d", host, port)
+func NewMginDBClient(protocol, host string, port int, username, password string) *MginDBClient {
+    uri := fmt.Sprintf("%s://%s:%d", protocol, host, port)
     return &MginDBClient{uri: uri, username: username, password: password}
 }
 

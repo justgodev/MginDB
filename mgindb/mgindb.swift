@@ -8,10 +8,10 @@ class MginDBClient: WebSocketDelegate {
     private var password: String
     private var responseHandler: ((String) -> Void)?
     
-    init(host: String, port: Int, username: String, password: String) {
+    init(protocol: String, host: String, port: Int, username: String, password: String) {
         self.username = username
         self.password = password
-        var request = URLRequest(url: URL(string: "ws://\(host):\(port)")!)
+        var request = URLRequest(url: URL(string: "\(protocol)://\(host):\(port)")!)
         request.timeoutInterval = 5
         self.socket = WebSocket(request: request)
         self.socket.delegate = self

@@ -16,8 +16,8 @@ class MginDBClient {
      * @param string $username The username for authentication.
      * @param string $password The password for authentication.
      */
-    public function __construct($host = '127.0.0.1', $port = 6446, $username = '', $password = '') {
-        $this->uri = "ws://$host:$port";
+    public function __construct($protocol = 'ws', $host = '127.0.0.1', $port = 6446, $username = '', $password = '') {
+        $this->uri = "$protocol://$host:$port";
         $this->username = $username;
         $this->password = $password;
         $this->websocket = null;

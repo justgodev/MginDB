@@ -2,8 +2,8 @@ require 'websocket-client-simple'
 require 'json'
 
 class MginDBClient
-  def initialize(host = '127.0.0.1', port = 6446, username = '', password = '')
-    @uri = "ws://#{host}:#{port}"
+  def initialize(protocol = 'ws', host = '127.0.0.1', port = 6446, username = '', password = '')
+    @uri = "#{protocol}://#{host}:#{port}"
     @username = username
     @password = password
     @ws = nil

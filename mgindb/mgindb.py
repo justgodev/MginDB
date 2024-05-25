@@ -7,7 +7,7 @@ import nest_asyncio  # Module to apply nested asyncio event loop support
 nest_asyncio.apply()
 
 class MginDBClient:
-    def __init__(self, host='127.0.0.1', port=6446, username='', password=''):
+    def __init__(self, protocol='ws', host='127.0.0.1', port=6446, username='', password=''):
         """
         Initializes the MginDBClient with connection parameters.
 
@@ -17,7 +17,7 @@ class MginDBClient:
             username (str): The username for authentication.
             password (str): The password for authentication.
         """
-        self.uri = f"ws://{host}:{port}"  # WebSocket URI
+        self.uri = f"{protocol}://{host}:{port}"  # WebSocket URI
         self.username = username  # Username for authentication
         self.password = password  # Password for authentication
         self.websocket = None  # WebSocket connection placeholder

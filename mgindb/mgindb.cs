@@ -10,11 +10,11 @@ public class MginDBClient
     private readonly string _password;
     private readonly WebSocket _webSocket;
 
-    public MginDBClient(string host = "127.0.0.1", int port = 6446, string username = "", string password = "")
+    public MginDBClient(string protocol = "ws", string host = "127.0.0.1", int port = 6446, string username = "", string password = "")
     {
         _username = username;
         _password = password;
-        _webSocket = new WebSocket($"ws://{host}:{port}");
+        _webSocket = new WebSocket($"{protocol}://{host}:{port}");
         _webSocket.OnMessage += (sender, e) => OnMessageReceived(e.Data);
     }
 

@@ -1,8 +1,8 @@
 import WebSocket from 'ws'; // Make sure to install 'ws' package via npm
 
 class MginDBClient {
-    constructor(host = '127.0.0.1', port = 6446, username = '', password = '') {
-        this.uri = `ws://${host}:${port}`; // WebSocket URI
+    constructor(protocol = 'ws', host = '127.0.0.1', port = 6446, username = '', password = '') {
+        this.uri = `${protocol}://${host}:${port}`; // WebSocket URI
         this.username = username; // Username for authentication
         this.password = password; // Password for authentication
         this.websocket = null; // WebSocket client

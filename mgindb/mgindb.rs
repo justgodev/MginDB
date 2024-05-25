@@ -19,8 +19,8 @@ struct MginDBClient {
 }
 
 impl MginDBClient {
-    fn new(host: &str, port: u16, username: &str, password: &str) -> Self {
-        let uri = format!("ws://{}:{}", host, port);
+    fn new(protocol: &str, host: &str, port: u16, username: &str, password: &str) -> Self {
+        let uri = format!("{}://{}:{}", protocol, host, port);
         Self {
             uri,
             username: username.to_string(),
