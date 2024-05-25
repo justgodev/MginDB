@@ -40,19 +40,16 @@ class ServerManager:
         """
         await self.main()  # Call the main function to start the server
 
-    async def main(self):
+    async def load_components(self):
         """
-        Main function to initialize and start the server components.
+        Initialize the server components.
 
         This function handles the initialization of the server components such as
         configuration loading, scheduler, data, indices, and replication setup.
-        It also starts the WebSocket server and waits for a stop event to gracefully
-        shutdown the server.
         """
         try:
-            # Load configuration
-            load_config()  # Load server configuration
             print("Loading config...")  # Print message indicating config loading
+            load_config()  # Load server configuration
 
             # Display MginDB version
             print(f"MginDB version: {self.app_state.version}")  # Print the current version of MginDB
@@ -65,20 +62,20 @@ class ServerManager:
                     self.updater.install_update(latest_version)  # Install the update
 
             # Load scheduler
-            self.scheduler_manager.load_scheduler()  # Load the scheduler
             print("Loading scheduler...")  # Print message indicating scheduler loading
+            self.scheduler_manager.load_scheduler()  # Load the scheduler
 
             # Load cache manager
             if await self.cache_manager.has_caching():
                 print("Loading cache manager...")
 
             # Load data
-            await self.run_in_executor(self.data_manager.load_data)  # Load data asynchronously
             print("Loading data...")  # Print message indicating data loading
+            await self.run_in_executor(self.data_manager.load_data)  # Load data asynchronously
 
             # Load indices
-            await self.run_in_executor(self.indices_manager.load_indices)  # Load indices asynchronously
             print("Loading indices...")  # Print message indicating indices loading
+            await self.run_in_executor(self.indices_manager.load_indices)  # Load indices asynchronously
 
             # Setup replication
             if await self.replication_manager.has_replication_is_replication_master():  # Check if this instance is a replication master
@@ -93,10 +90,25 @@ class ServerManager:
                 print("Loading scheduler...")  # Print message indicating scheduler starting
                 await self.scheduler_manager.start_scheduler()  # Start the scheduler
 
+        except Exception as e:
+            print(f"Failed to load MginDB components: {e}")  # Print error message if server fails to load components
+    
+    async def main(self):
+        """
+        Main function to start the server.
+
+        This function handles starts the WebSocket server and waits for a stop event to gracefully
+        shutdown the server.
+        """
+        try:
+            # Load components
+            await self.load_components()
+
             # Start WebSocket server
             print("Starting websocket...")  # Print message indicating WebSocket starting
             host = self.app_state.config_store.get('HOST')  # Get host from config
             port = self.app_state.config_store.get('PORT')  # Get port from config
+            
             await websockets.serve(lambda ws, path: handle_websocket(ws, path, self.thread_executor, self.process_executor), host, port)  # Start the WebSocket server
             print(f"WebSocket serving on {host}:{port}")  # Print message with WebSocket server details
 
