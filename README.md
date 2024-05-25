@@ -40,13 +40,13 @@ https://mgindb.com/documentation.html
 ## Install
 ```sh
 # Download and install via pip
-wget https://mgindb.com/downloads/mgindb-0.1.2-py3-none-any.whl
-pip install mgindb-0.1.2-py3-none-any.whl
+wget https://mgindb.com/downloads/mgindb-0.1.3-py3-none-any.whl
+pip install mgindb-0.1.3-py3-none-any.whl
 
 # Or download the tarball and install manually
-wget https://mgindb.com/downloads/mgindb-0.1.2.tar.gz
-tar -xzf mgindb-0.1.2.tar.gz
-cd mgindb-0.1.2
+wget https://mgindb.com/downloads/mgindb-0.1.3.tar.gz
+tar -xzf mgindb-0.1.3.tar.gz
+cd mgindb-0.1.3
 python setup.py install
 
 # Start MginDB
