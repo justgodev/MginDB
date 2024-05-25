@@ -12,6 +12,7 @@ from .replication_manager import ReplicationManager  # Replication management
 from .cache_manager import CacheManager  # Cache management
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import uvloop
+import os
 
 # Use uvloop for a faster event loop
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -27,8 +28,13 @@ class ServerManager:
         self.indices_manager = IndicesManager()  # Manages indices
         self.replication_manager = ReplicationManager()  # Manages replication
         self.cache_manager = CacheManager()  # Manages cache
-        self.thread_executor = ThreadPoolExecutor()  # Thread pool for I/O-bound tasks
-        self.process_executor = ProcessPoolExecutor()  # Process pool for CPU-bound tasks
+        
+        # Get the number of available CPU cores
+        num_cores = os.cpu_count()
+        
+        # Initialize thread and process pools based on available CPU cores
+        self.thread_executor = ThreadPoolExecutor(max_workers=num_cores)  # Thread pool for I/O-bound tasks
+        self.process_executor = ProcessPoolExecutor(max_workers=num_cores)  # Process pool for CPU-bound tasks
 
     async def start_server(self):
         """
