@@ -306,6 +306,7 @@ class DataCommandHandler:
 
             if 'EXPIRE' in raw_value and not self.processor.scheduler_manager.is_scheduler_active():
                 return "Scheduler is not active. Run the command CONFIG SET SCHEDULER 1 to activate"
+            
             value, expiry = self.processor.command_utils_manager.parse_value_instructions(raw_value)  # Parse the value instructions
             context = self.processor.command_utils_manager.get_context_from_key(AppState().data_store, key_pattern)  # Get the context from the key
             value = self.processor.command_utils_manager.handle_expression_functions(value, context)  # Handle expression functions
