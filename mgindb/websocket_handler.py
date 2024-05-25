@@ -1,5 +1,5 @@
 import uuid  # Module for generating unique identifiers
-import json  # Module for JSON operations
+import ujson  # Module for JSON operations
 from .app_state import AppState  # Importing AppState class from app_state module
 from .connection_handler import asyncio, websockets, signal, stop_event, signal_stop  # Importing necessary functions and classes from connection_handler module
 from .command_processing import CommandProcessor  # Importing CommandProcessor class from command_processing module
@@ -73,11 +73,11 @@ class WebSocketSession:
             bool: True if credentials are valid, False otherwise.
         """
         try:
-            auth_data = json.loads(message)
+            auth_data = ujson.loads(message)
             user_provided = auth_data.get('username', '')
             password_provided = auth_data.get('password', '')
             return user_provided == expected_username and password_provided == expected_password
-        except json.JSONDecodeError:
+        except ujson.JSONDecodeError:
             await self.websocket.send('Authentication required but no credentials provided.')
             await self.websocket.close(code=1008)
             return False
@@ -86,7 +86,7 @@ class WebSocketSession:
         """Listen for messages from the WebSocket and process commands."""
         async for message in self.websocket:
             response = await self.command_processor.process_command(message, self.sid)
-            response = json.dumps(response) if isinstance(response, dict) else str(response)
+            response = ujson.dumps(response) if isinstance(response, dict) else str(response)
             await self.websocket.send(response)
 
 # Original function to handle websockets using the new WebSocketManager

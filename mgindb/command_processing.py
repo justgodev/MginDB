@@ -1,5 +1,5 @@
 # Import necessary modules and classes
-import json  # Module for JSON operations
+import ujson  # Module for JSON operations
 import re  # Module for regular expressions
 import time  # Module for time
 from .app_state import AppState  # Application state management
@@ -163,7 +163,7 @@ class ConfigCommandHandler:
 
     async def handle_config_show_command(self):
         """Shows the current configuration."""
-        return json.dumps(AppState().config_store)  # Return the configuration as a JSON string
+        return ujson.dumps(AppState().config_store)  # Return the configuration as a JSON string
 
     async def handle_config_set_command(self, parts):
         """Sets a configuration value."""
@@ -273,7 +273,7 @@ class DataCommandHandler:
         """Handles the KEYS command."""
         data_store = AppState().data_store  # Access the data store
         main_keys = list(data_store.keys())  # Get the list of main keys
-        return json.dumps(sorted(main_keys))  # Return the sorted list of keys as a JSON string
+        return ujson.dumps(sorted(main_keys))  # Return the sorted list of keys as a JSON string
 
     async def count_command(self, args):
         """Handles the COUNT command."""
@@ -346,15 +346,15 @@ class DataCommandHandler:
     async def set_keys_wildcard(self, base_path, last_key, value, data_store):
         """Sets keys using wildcard in the base path."""
         try:
-            parsed_value = json.loads(value)  # Parse the value as JSON
-        except json.JSONDecodeError:
+            parsed_value = ujson.loads(value)  # Parse the value as JSON
+        except ujson.JSONDecodeError:
             parsed_value = value
 
         if isinstance(parsed_value, dict):
             total_updated_count = 0
             for key, val in parsed_value.items():
                 nested_last_key = f"{last_key}:{key}"
-                updated_count = await self.set_keys_wildcard(base_path, nested_last_key, json.dumps(val), data_store)  # Recursively set keys
+                updated_count = await self.set_keys_wildcard(base_path, nested_last_key, ujson.dumps(val), data_store)  # Recursively set keys
                 total_updated_count += updated_count
             return total_updated_count
         else:
@@ -391,13 +391,13 @@ class DataCommandHandler:
     async def set_specific_key(self, parts, value):
         """Sets a specific key."""
         try:
-            parsed_value = json.loads(value)  # Parse the value as JSON
+            parsed_value = ujson.loads(value)  # Parse the value as JSON
             if isinstance(parsed_value, dict):
                 for key, val in parsed_value.items():
                     nested_parts = parts + [key]
                     await self.set_individual_key(nested_parts, val)  # Set individual keys recursively
                 return "OK"
-        except json.JSONDecodeError:
+        except ujson.JSONDecodeError:
             parsed_value = value
         return await self.set_individual_key(parts, parsed_value)  # Set the individual key
 
@@ -415,8 +415,8 @@ class DataCommandHandler:
 
         if isinstance(value, str) and value.startswith('[') and value.endswith(']'):
             try:
-                value = json.loads(value)
-            except json.JSONDecodeError:
+                value = ujson.loads(value)
+            except ujson.JSONDecodeError:
                 pass
 
         current[last_key] = value  # Set the value
@@ -703,7 +703,7 @@ class QueryCommandHandler:
 
             if isinstance(local_results, str):
                 return local_results
-            return json.dumps(local_results)
+            return ujson.dumps(local_results)
 
         host = AppState().config_store.get('HOST')
         port = AppState().config_store.get('PORT')
@@ -720,7 +720,7 @@ class QueryCommandHandler:
         if isinstance(final_results, (str, int, float)):
             return str(final_results)
 
-        return json.dumps(final_results)
+        return ujson.dumps(final_results)
 
     async def process_local_query(self, root, conditions, modifiers=None):
         """Processes a query locally."""
@@ -792,17 +792,17 @@ class ShardCommandHandler:
         websocket = AppState().websocket
 
         if await self.processor.replication_manager.has_replication_is_replication_master():
-            data = json.dumps(AppState().data_store)  # Get the data as a JSON string
-            indices = json.dumps(AppState().indices)  # Get the indices as a JSON string
+            data = ujson.dumps(AppState().data_store)  # Get the data as a JSON string
+            indices = ujson.dumps(AppState().indices)  # Get the indices as a JSON string
             CHUNK_SIZE = 5000
             data_chunks = [data[i:i+CHUNK_SIZE] for i in range(0, len(data), CHUNK_SIZE)]  # Split the data into chunks
             indices_chunks = [indices[i:i+CHUNK_SIZE] for i in range(0, len(indices), CHUNK_SIZE)]  # Split the indices into chunks
 
             for data_chunk in data_chunks:
-                await websocket.send(json.dumps({'data_chunks': [data_chunk], 'indices_chunks': []}))  # Send data chunks
+                await websocket.send(ujson.dumps({'data_chunks': [data_chunk], 'indices_chunks': []}))  # Send data chunks
 
             for indices_chunk in indices_chunks:
-                await websocket.send(json.dumps({'data_chunks': [], 'indices_chunks': [indices_chunk]}))  # Send indices chunks
+                await websocket.send(ujson.dumps({'data_chunks': [], 'indices_chunks': [indices_chunk]}))  # Send indices chunks
 
             await websocket.send('DONE')  # Send DONE signal
 
@@ -816,7 +816,7 @@ class ShardCommandHandler:
         self.processor.backup_manager.backup_data()  # Backup the data
 
         if await self.processor.sharding_manager.is_sharding_master():
-            return json.dumps(await self.processor.sharding_manager.reshard())  # Reshard if sharding master
+            return ujson.dumps(await self.processor.sharding_manager.reshard())  # Reshard if sharding master
         else:
             local_data = self.processor.data_manager.get_all_local_data()  # Get all local data
             local_indices = self.processor.indices_manager.get_all_local_indices()  # Get all local indices
@@ -836,4 +836,4 @@ class ShardCommandHandler:
                 "local_indices": prepared_indices
             }
 
-            return json.dumps(response)  # Return the response as a JSON string
+            return ujson.dumps(response)  # Return the response as a JSON string

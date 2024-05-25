@@ -1,4 +1,4 @@
-import json  # Module for JSON operations
+import ujson  # Module for JSON operations
 import asyncio  # Module for asynchronous programming
 import websockets  # WebSocket client library for asyncio
 import nest_asyncio  # Module to apply nested asyncio event loop support
@@ -31,7 +31,7 @@ class MginDBClient:
         """
         self.websocket = await websockets.connect(self.uri)
         auth_data = {'username': self.username, 'password': self.password}
-        await self.websocket.send(json.dumps(auth_data))
+        await self.websocket.send(ujson.dumps(auth_data))
         response = await self.websocket.recv()
         if response != "MginDB server connected... Welcome!":
             raise Exception("Failed to authenticate: " + response)
@@ -69,10 +69,10 @@ class MginDBClient:
             key, json_data = command_str.split(' ', 2)[1:3]
             try:
                 # Validate JSON before sending
-                parsed_data = json.loads(json_data)
-                json_data = json.dumps(parsed_data)
+                parsed_data = ujson.loads(json_data)
+                json_data = ujson.dumps(parsed_data)
                 command_str = f'SET {key} {json_data}'
-            except json.JSONDecodeError:
+            except ujson.JSONDecodeError:
                 print("Invalid JSON data provided.")
 
         if loop.is_running():

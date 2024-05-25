@@ -1,5 +1,5 @@
 # Import necessary modules and classes
-import json  # Module for JSON operations
+import ujson  # Module for JSON operations
 import os  # Module for interacting with the operating system
 from .app_state import AppState  # Importing AppState class from app_state module
 from .connection_handler import asyncio, websockets  # Importing asyncio and websockets from connection_handler module
@@ -71,7 +71,7 @@ class ReplicationManager:
         master_uri = self.app_state.config_store.get('REPLICATION_MASTER')
         try:
             async with websockets.connect(f'ws://{master_uri}') as websocket:
-                await websocket.send(json.dumps(self.app_state.auth_data))  # Send authentication data
+                await websocket.send(ujson.dumps(self.app_state.auth_data))  # Send authentication data
                 auth_response = await websocket.recv()
                 if 'Welcome!' in auth_response:
                     await websocket.send('REPLICATE')  # Send the replicate command
@@ -86,7 +86,7 @@ class ReplicationManager:
                         if chunk == 'DONE':
                             break
                         else:
-                            chunk_data = json.loads(chunk)
+                            chunk_data = ujson.loads(chunk)
                             data_chunks.extend(chunk_data['data_chunks'])
                             indices_chunks.extend(chunk_data['indices_chunks'])
 
@@ -112,8 +112,8 @@ class ReplicationManager:
             indices_string = ''.join(data['indices_chunks'])
 
             # Deserialize the JSON strings into Python objects
-            new_data = json.loads(data_string)
-            new_indices = json.loads(indices_string)
+            new_data = ujson.loads(data_string)
+            new_indices = ujson.loads(indices_string)
 
             # Update AppState
             self.app_state.data_store = new_data
@@ -127,7 +127,7 @@ class ReplicationManager:
                 indices_manager.save_indices()  # Save indices if scheduler is not active
 
             print("Replication data processed successfully.")
-        except json.JSONDecodeError as e:
+        except ujson.JSONDecodeError as e:
             print(f"Error decoding replication data: {e}")
 
     async def send_command_to_slaves(self, command):
@@ -143,7 +143,7 @@ class ReplicationManager:
         async def send_command_to_slave(slave_uri):
             try:
                 async with websockets.connect(f'ws://{slave_uri}') as websocket:
-                    await websocket.send(json.dumps(self.app_state.auth_data))  # Send authentication data
+                    await websocket.send(ujson.dumps(self.app_state.auth_data))  # Send authentication data
                     auth_response = await websocket.recv()
                     if 'Welcome!' in auth_response:
                         await websocket.send(command)  # Send the command

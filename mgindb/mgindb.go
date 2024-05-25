@@ -45,7 +45,7 @@ func (client *MginDBClient) Connect() error {
     client.connection = c
 
     authData := AuthData{Username: client.username, Password: client.password}
-    authDataJson, err := json.Marshal(authData)
+    authDataJson, err := ujson.Marshal(authData)
     if err != nil {
         return err
     }

@@ -1,4 +1,4 @@
-import json  # Module for JSON operations
+import ujson  # Module for JSON operations
 import uuid  # Module for generating unique identifiers
 
 # Print a message indicating the setup process
@@ -29,7 +29,7 @@ config = {
 
 # Write the configuration to a JSON file
 with open('config.json', mode='w', encoding='utf-8') as file:
-    json.dump(config, file, indent=4)
+    ujson.dump(config, file, indent=4)
 
 # Print a message indicating the setup is complete
 print("Initial configuration has been set up.")

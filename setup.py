@@ -18,7 +18,8 @@ setup(
         'uuid',
         'croniter',
         'requests',
-        'uvloop'
+        'uvloop',
+        'ujson'
     ],
     entry_points={
         'console_scripts': [

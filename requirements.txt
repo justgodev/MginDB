@@ -9,3 +9,4 @@ croniter
 prompt_toolkit
 requests
 uvloop
+ujson

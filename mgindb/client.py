@@ -1,6 +1,6 @@
 import asyncio  # Module for asynchronous programming
 import websockets  # WebSocket client and server library for asyncio
-import json  # Module for JSON operations
+import ujson  # Module for JSON operations
 import os  # Module for interacting with the operating system
 import signal  # Module for signal handling
 from getpass import getpass  # Function to securely get a password from the user
@@ -226,12 +226,12 @@ class MginDBCLI:
             use_table_format (bool): Flag indicating whether to use table format.
         """
         try:
-            json_response = json.loads(response)
+            json_response = ujson.loads(response)
             if use_table_format:
                 self.print_table(json_response)  # Print response in table format
             else:
-                print(json.dumps(json_response, indent=2))  # Print formatted JSON response
-        except json.JSONDecodeError:
+                print(ujson.dumps(json_response, indent=2))  # Print formatted JSON response
+        except ujson.JSONDecodeError:
             print(response)  # Print raw response if JSON decoding fails
 
     async def cli_session(self, uri):
@@ -253,7 +253,7 @@ class MginDBCLI:
         try:
             self.websocket = await websockets.connect(uri, ping_interval=30, ping_timeout=10)  # Connect to the WebSocket server
             auth_data = {'username': username, 'password': password}
-            await self.websocket.send(json.dumps(auth_data))  # Send authentication data
+            await self.websocket.send(ujson.dumps(auth_data))  # Send authentication data
 
             auth_response = await self.websocket.recv()
             print(self.yellow(auth_response))
@@ -288,8 +288,8 @@ class MginDBCLI:
 
                     if user_input.strip():
                         if user_input.strip().startswith('{') and ':' in user_input:
-                            command_data = json.loads(user_input)
-                            await self.websocket.send(json.dumps(command_data))  # Send command as JSON
+                            command_data = ujson.loads(user_input)
+                            await self.websocket.send(ujson.dumps(command_data))  # Send command as JSON
                         else:
                             await self.websocket.send(user_input)  # Send command as raw text
                     else:
@@ -304,8 +304,8 @@ class MginDBCLI:
                 except websockets.ConnectionClosed:
                     print("Connection to server closed.")
                     break
-                except json.JSONDecodeError:
-                    print("Failed to parse command as JSON. Sending as raw text.")
+                except ujson.JSONDecodeError:
+                    print("Failed to parse command as ujson. Sending as raw text.")
                     await self.websocket.send(user_input)
                 except asyncio.CancelledError:
                     break

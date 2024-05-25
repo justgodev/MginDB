@@ -1,5 +1,5 @@
 from .app_state import AppState  # Importing AppState class from app_state module
-import json  # Module for JSON operations
+import ujson  # Module for JSON operations
 
 class Subscriptions:
     def __init__(self, app_state):
@@ -14,7 +14,7 @@ class Subscriptions:
             str: JSON representation of subscriptions.
         """
         subscriptions = {key: list(subscribers) for key, subscribers in self.app_state.sub_pub.items()}
-        return json.dumps(subscriptions)
+        return ujson.dumps(subscriptions)
 
     def subscribe(self, keys, sid):
         """
@@ -72,7 +72,7 @@ class Notifier:
             sid (str): Session ID.
         """
         if self.app_state.monitor_subscribers:
-            message = json.dumps({
+            message = ujson.dumps({
                 "command": command_line,
                 "sid": sid
             })
@@ -99,7 +99,7 @@ class Notifier:
         if key in self.app_state.sub_pub:
             subscribers.update(self.app_state.sub_pub[key])
 
-        message = json.dumps({
+        message = ujson.dumps({
             "key": key,
             "data": data
         })

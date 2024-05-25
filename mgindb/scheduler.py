@@ -1,4 +1,4 @@
-import json  # Module for JSON operations
+import ujson  # Module for JSON operations
 import os  # Module for interacting with the operating system
 import re  # Module for regular expressions
 import time  # Module for time-related functions
@@ -131,12 +131,12 @@ class SchedulerTasks:
         """
         if not os.path.exists(SCHEDULER_FILE):
             with open(SCHEDULER_FILE, mode='w', encoding='utf-8') as file:
-                json.dump({}, file)
+                ujson.dump({}, file)
         try:
             with open(SCHEDULER_FILE, mode='r', encoding='utf-8') as file:
-                loaded_data = json.load(file)
+                loaded_data = ujson.load(file)
             self.app_state.scheduled_tasks.update(loaded_data)
-        except json.JSONDecodeError as e:
+        except ujson.JSONDecodeError as e:
             print(f"Failed to load scheduler data: {e}")
             return {}
 
@@ -144,7 +144,7 @@ class SchedulerTasks:
         """Save the current scheduler tasks to the scheduler file."""
         try:
             with open(SCHEDULER_FILE, mode='w', encoding='utf-8') as file:
-                json.dump(self.app_state.scheduled_tasks, file)
+                ujson.dump(self.app_state.scheduled_tasks, file)
         except IOError as e:
             print(f"Failed to save scheduler data: {e}")
 
@@ -207,7 +207,7 @@ class SchedulerTasks:
         """Show all scheduled tasks."""
         if not self.app_state.scheduled_tasks:
             return None
-        schedule_info = json.dumps(self.app_state.scheduled_tasks)
+        schedule_info = ujson.dumps(self.app_state.scheduled_tasks)
         return schedule_info
 
     def show_specific_schedule(self, schedule):
@@ -223,7 +223,7 @@ class SchedulerTasks:
         tasks = self.app_state.scheduled_tasks.get(schedule, None)
         if not tasks:
             return None
-        tasks_info = json.dumps(tasks, indent=4)
+        tasks_info = ujson.dumps(tasks, indent=4)
         return tasks_info
 
     def find_task_by_key(self, key):
@@ -243,7 +243,7 @@ class SchedulerTasks:
 
         if not found_tasks:
             return f"No tasks found for key {key}."
-        tasks_info = json.dumps(found_tasks, indent=4)
+        tasks_info = ujson.dumps(found_tasks, indent=4)
         return tasks_info
 
     def add_schedule_task(self, details):

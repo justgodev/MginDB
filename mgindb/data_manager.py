@@ -1,4 +1,4 @@
-import json  # Module for JSON operations
+import ujson  # Module for JSON operations
 import os  # Module for interacting with the operating system
 import time  # Module for time-related functions
 from .app_state import AppState  # Import application state management
@@ -24,12 +24,12 @@ class DataManager:
         """
         if not os.path.exists(self.data_file):
             with open(self.data_file, mode='w', encoding='utf-8') as file:
-                json.dump({}, file)
+                ujson.dump({}, file)
         try:
             with open(self.data_file, mode='r', encoding='utf-8') as file:
-                loaded_data = json.load(file)
+                loaded_data = ujson.load(file)
             self.app_state.data_store.update(loaded_data)
-        except json.JSONDecodeError as e:
+        except ujson.JSONDecodeError as e:
             print(f"Failed to load data: {e}")
             return {}
 
@@ -43,7 +43,7 @@ class DataManager:
         try:
             if self.app_state.data_has_changed:
                 with open(self.data_file, mode='w', encoding='utf-8') as file:
-                    json.dump(self.app_state.data_store, file, indent=4)
+                    ujson.dump(self.app_state.data_store, file, indent=4)
                     self.app_state.data_has_changed = False
         except IOError as e:
             print(f"Failed to save data: {e}")

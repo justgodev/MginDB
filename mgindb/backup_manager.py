@@ -3,7 +3,7 @@ from .app_state import AppState  # Application state management
 import os  # Module for interacting with the operating system
 import shutil  # Module for file operations
 import datetime  # Module for date and time manipulation
-import json  # Module for JSON operations
+import ujson  # Module for JSON operations
 from .constants import DATA_FILE, INDICES_FILE, SCHEDULER_FILE, BACKUP_DIR  # Import constants
 
 from .data_manager import DataManager  # Importing data management functions from data_manager module
@@ -92,11 +92,11 @@ class BackupManager:
                 backup_info.append({"file": file, "date": backup_date})  # Append backup information as dictionary
             
             if backup_info:
-                return json.dumps(backup_info)  # Return JSON string with indentation for readability
+                return ujson.dumps(backup_info)  # Return JSON string with indentation for readability
             else:
-                return json.dumps([{"message": "No backup files found."}])  # Return JSON string with a single element indicating the message
+                return ujson.dumps([{"message": "No backup files found."}])  # Return JSON string with a single element indicating the message
         except FileNotFoundError:
-            return json.dumps([{"message": "Backup directory not found."}])  # Return JSON string with a single element indicating the message
+            return ujson.dumps([{"message": "Backup directory not found."}])  # Return JSON string with a single element indicating the message
 
     def backup_data(self):
         """
@@ -120,7 +120,7 @@ class BackupManager:
             serializable_data_store = data_manager.convert_sets_to_lists(self.app_state.data_store)
             try:
                 with open(backup_path_data, 'w', encoding='utf-8') as backup_file:
-                    json.dump(serializable_data_store, backup_file, indent=4)
+                    ujson.dump(serializable_data_store, backup_file, indent=4)
                 results.append("Data backup completed successfully.")
             except IOError as e:
                 results.append(f"Failed to backup data file: {e}")
@@ -132,7 +132,7 @@ class BackupManager:
             serializable_indices = data_manager.convert_sets_to_lists(self.app_state.indices)
             try:
                 with open(backup_path_indices, 'w', encoding='utf-8') as backup_file:
-                    json.dump(serializable_indices, backup_file, indent=4)
+                    ujson.dump(serializable_indices, backup_file, indent=4)
                 results.append("Indices backup completed successfully.")
             except IOError as e:
                 results.append(f"Failed to backup indices file: {e}")
@@ -144,7 +144,7 @@ class BackupManager:
             serializable_scheduler = data_manager.convert_sets_to_lists(self.app_state.scheduled_tasks)
             try:
                 with open(backup_path_scheduler, 'w', encoding='utf-8') as backup_file:
-                    json.dump(serializable_scheduler, backup_file, indent=4)
+                    ujson.dump(serializable_scheduler, backup_file, indent=4)
                 results.append("Scheduler backup completed successfully.")
             except IOError as e:
                 results.append(f"Failed to backup scheduler file: {e}")

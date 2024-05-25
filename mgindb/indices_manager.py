@@ -1,4 +1,4 @@
-import json  # Module for JSON operations
+import ujson  # Module for JSON operations
 import os  # Module for interacting with the operating system
 from .app_state import AppState  # Importing AppState class from app_state module
 from .constants import INDICES_FILE  # Importing INDICES_FILE constant from constants module
@@ -25,13 +25,13 @@ class IndicesManager:
         """
         if not os.path.exists(self.indice_file):
             with open(self.indice_file, mode='w', encoding='utf-8') as file:
-                json.dump({}, file)
+                ujson.dump({}, file)
 
         with open(self.indice_file, mode='r', encoding='utf-8') as file:
             try:
-                loaded_indices = json.load(file)
+                loaded_indices = ujson.load(file)
                 self.app_state.indices.update(self.deserialize_indices(loaded_indices))
-            except json.JSONDecodeError:
+            except ujson.JSONDecodeError:
                 self.app_state.indices.update({})
 
     def save_indices(self):
@@ -45,7 +45,7 @@ class IndicesManager:
             if self.app_state.indices_has_changed:
                 serializable_indices = self.serialize_indices(self.app_state.indices)
                 with open(self.indice_file, mode='w', encoding='utf-8') as file:
-                    json.dump(serializable_indices, file, indent=4)
+                    ujson.dump(serializable_indices, file, indent=4)
                     self.app_state.indices_has_changed = False
         except IOError as e:
             print(f"Failed to save indices: {e}")
@@ -137,9 +137,9 @@ class IndicesManager:
 
         index_structure = recursive_structure(indices)
         if index_structure:
-            return json.dumps(index_structure, indent=4)
+            return ujson.dumps(index_structure, indent=4)
         else:
-            return json.dumps({"message": "No indices defined."})
+            return ujson.dumps({"message": "No indices defined."})
 
     def indices_get(self, args):
         """
@@ -153,10 +153,10 @@ class IndicesManager:
         """
         indices = self.app_state.indices
         if args.strip().upper() == "ALL":
-            return json.dumps(self.indices_get_all(), indent=4)
+            return ujson.dumps(self.indices_get_all(), indent=4)
 
         if not args:
-            return json.dumps({"error": "No index path provided"})
+            return ujson.dumps({"error": "No index path provided"})
 
         keys = args.split(':')
         data = indices
@@ -165,14 +165,14 @@ class IndicesManager:
             if key in data:
                 data = data[key]
             else:
-                return json.dumps({"error": f"Index '{args}' not found"})
+                return ujson.dumps({"error": f"Index '{args}' not found"})
 
         if 'type' in data and data['type'] == 'set':
-            return json.dumps(list(data['values'].keys()), indent=4)
+            return ujson.dumps(list(data['values'].keys()), indent=4)
         elif 'type' in data and data['type'] == 'string':
-            return json.dumps(data['values'], indent=4)
+            return ujson.dumps(data['values'], indent=4)
         else:
-            return json.dumps({"error": "Unsupported index type"})
+            return ujson.dumps({"error": "Unsupported index type"})
 
     def indices_get_all(self):
         """

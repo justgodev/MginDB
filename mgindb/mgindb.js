@@ -22,7 +22,7 @@ class MginDBClient {
             this.websocket.on('error', reject);
         });
 
-        const authData = JSON.stringify({ username: this.username, password: this.password });
+        const authData = ujson.stringify({ username: this.username, password: this.password });
         this.websocket.send(authData);
 
         // Await the first message which should be a welcome message

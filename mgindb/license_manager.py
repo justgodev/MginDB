@@ -1,4 +1,4 @@
-import json
+import ujson
 import os
 import time
 from .app_state import AppState

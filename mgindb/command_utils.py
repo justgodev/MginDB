@@ -1,4 +1,4 @@
-import json
+import ujson
 import re
 import time
 import datetime
@@ -117,16 +117,16 @@ class JSONUtil:
     @staticmethod
     def prepare_json(result):
         if isinstance(result, (dict, list)):  # If result is a dictionary or list, encode it as JSON
-            return json.dumps(result)
+            return ujson.dumps(result)
         elif isinstance(result, str):
             try:
                 # Check if the string is already valid JSON
-                json.loads(result)
+                ujson.loads(result)
                 return result  # It's already a JSON string, return as is
-            except json.JSONDecodeError:
-                return json.dumps(result)  # Not a JSON string, encode it
+            except ujson.JSONDecodeError:
+                return ujson.dumps(result)  # Not a JSON string, encode it
         else:
-            return json.dumps(str(result))
+            return ujson.dumps(str(result))
 
 
 class ContextUtil:
@@ -765,12 +765,12 @@ class DataUtil:
 
             if value.startswith('{') and value.endswith('}'):
                 try:
-                    value_dict = json.loads(value)
+                    value_dict = ujson.loads(value)
                     if 'value' in value_dict:
                         value = value_dict['value']
                         if 'expiry' in value_dict and expiry is None:
                             expiry = time.time() + value_dict['expiry']
-                except json.JSONDecodeError:
+                except ujson.JSONDecodeError:
                     pass
 
         return value.strip(), expiry

@@ -1,5 +1,5 @@
 import hashlib
-import json
+import ujson
 from .app_state import AppState
 from .connection_handler import asyncio, websockets
 from .data_manager import DataManager
@@ -94,7 +94,7 @@ class ShardingManager:
         uri = f"ws://{shard_uri}"
         try:
             async with websockets.connect(uri) as websocket:
-                await websocket.send(json.dumps(self.app_state.auth_data))
+                await websocket.send(ujson.dumps(self.app_state.auth_data))
                 auth_response = await websocket.recv()
                 if 'Welcome!' in auth_response:
                     await websocket.send(command)
@@ -121,12 +121,12 @@ class ShardingManager:
         async def query_shard(uri):
             try:
                 async with websockets.connect(f'ws://{uri}') as websocket:
-                    await websocket.send(json.dumps(self.app_state.auth_data))
+                    await websocket.send(ujson.dumps(self.app_state.auth_data))
                     auth_response = await websocket.recv()
                     if 'Welcome!' in auth_response:
                         await websocket.send(command)
                         response = await websocket.recv()
-                        data = json.loads(response)
+                        data = ujson.loads(response)
                         if expected_types:
                             data = self.correct_data_types(data, expected_types)
                         return data
@@ -161,7 +161,7 @@ class ShardingManager:
             for key, expected_type in expected_types.items():
                 if key in entry and not isinstance(entry[key], expected_type):
                     try:
-                        entry[key] = json.loads(entry[key]) if isinstance(entry[key], str) else expected_type(entry[key])
+                        entry[key] = ujson.loads(entry[key]) if isinstance(entry[key], str) else expected_type(entry[key])
                     except (ValueError, TypeError):
                         print(f"Warning: Failed to convert {key} to {expected_type}")
         return data
@@ -182,12 +182,12 @@ class ShardingManager:
         for uri in shard_uris:
             try:
                 async with websockets.connect(f'ws://{uri}') as websocket:
-                    await websocket.send(json.dumps(self.app_state.auth_data))
+                    await websocket.send(ujson.dumps(self.app_state.auth_data))
                     auth_response = await websocket.recv()
                     if 'Welcome!' in auth_response:
                         await websocket.send(command)
                         response = await websocket.recv()
-                        response_data = json.loads(response)
+                        response_data = ujson.loads(response)
                         data = response_data.get('local_data', {})
                         indices = response_data.get('local_indices', {})
                         results.append((data, indices))
@@ -348,7 +348,7 @@ class ShardingManager:
             shard_commands (dict): The dictionary to store shard commands.
         """
         combined_key = f"{key}:{sub_key}" if sub_key else key
-        value_str = json.dumps(value) if isinstance(value, (dict, list, set)) else str(value)
+        value_str = ujson.dumps(value) if isinstance(value, (dict, list, set)) else str(value)
         command = f"{combined_key} {value_str}"
         if shard not in shard_commands:
             shard_commands[shard] = [command]
@@ -450,7 +450,7 @@ class ShardingManager:
         """
         if not isinstance(value, str):
             try:
-                value = json.dumps(value)
+                value = ujson.dumps(value)
             except TypeError as e:
                 print(f"Error converting value to JSON: {e}")
                 return None
@@ -476,9 +476,9 @@ class ShardingManager:
             return data
         elif isinstance(data, str):
             try:
-                json.loads(data)
+                ujson.loads(data)
                 return data
-            except json.JSONDecodeError:
-                return json.dumps(data)
+            except ujson.JSONDecodeError:
+                return ujson.dumps(data)
         else:
             raise TypeError(f"Unsupported data type: {type(data)}")

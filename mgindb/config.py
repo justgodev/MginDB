@@ -1,5 +1,5 @@
 import os
-import json
+import ujson
 import uuid
 from .app_state import AppState
 from .constants import CONFIG_FILE, BACKUP_DIR, DATA_DIR
@@ -74,13 +74,13 @@ def load_config():
     if not os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, mode='w', encoding='utf-8') as file:
             # Create a default configuration file with various settings
-            json.dump(default_config, file, indent=4)
+            ujson.dump(default_config, file, indent=4)
     
     with open(CONFIG_FILE, mode='r') as file:
         try:
             # Load the configuration from the file
-            loaded_data = json.load(file)
-        except json.JSONDecodeError:
+            loaded_data = ujson.load(file)
+        except ujson.JSONDecodeError:
             # Return an empty dictionary if the configuration file is invalid
             return {}
 
@@ -90,7 +90,7 @@ def load_config():
     updated_config = {key: updated_config[key] for key in default_config.keys()}
 
     with open(CONFIG_FILE, mode='w', encoding='utf-8') as file:
-        json.dump(updated_config, file, indent=4)
+        ujson.dump(updated_config, file, indent=4)
 
     # Update the application's configuration store with the loaded data
     AppState().config_store.update(updated_config)
@@ -116,4 +116,4 @@ def save_config():
     level of 4 for readability.
     """
     with open(CONFIG_FILE, mode='w', encoding='utf-8') as file:
-        json.dump(AppState().config_store, file, indent=4)
+        ujson.dump(AppState().config_store, file, indent=4)
