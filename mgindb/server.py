@@ -1,7 +1,7 @@
 # Import necessary modules and classes
 from .app_state import AppState  # Application state management
 from .connection_handler import asyncio, websockets, signal, stop_event, signal_handler  # Connection and signal handling
-from .websocket_handler import handle_websocket  # WebSocket handling
+from .websocket_handler import WebSocketManager  # WebSocket handling
 from .config import load_config  # Configuration loading
 from .license_manager import LicenseManager  # License management
 from .update_manager import UpdateManager  # Update management
@@ -109,7 +109,8 @@ class ServerManager:
             host = self.app_state.config_store.get('HOST')  # Get host from config
             port = self.app_state.config_store.get('PORT')  # Get port from config
             
-            await websockets.serve(lambda ws, path: handle_websocket(ws, path, self.thread_executor, self.process_executor), host, port)  # Start the WebSocket server
+            websocket_manager = WebSocketManager(self.thread_executor, self.process_executor)  # Create an instance of WebSocketManager
+            await websockets.serve(websocket_manager.handle_websocket, host, port)  # Start the WebSocket server
             print(f"WebSocket serving on {host}:{port}")  # Print message with WebSocket server details
 
             # Wait for stop signal
