@@ -14,7 +14,7 @@ from .backup_manager import BackupManager  # Backup management
 from .sub_pub_manager import SubPubManager  # Publish/subscribe management
 from .command_utils import CommandUtilsManager  # Utility functions for command handling
 from .replication_manager import ReplicationManager  # Replication management
-from .cache_manager import CacheManager  # Replication management
+from .cache_manager import CacheManager  # Cache management
 
 class CommandProcessor:
     def __init__(self, thread_executor, process_executor):
@@ -47,11 +47,9 @@ class CommandProcessor:
         """
         loop = asyncio.get_running_loop()
         executor = self.thread_executor if executor_type == 'thread' else self.process_executor
-        #print(f"Running {func.__name__} in {'thread' if executor_type == 'thread' else 'process'} executor with args: {args}")
         start_time = time.time()
         result = await loop.run_in_executor(executor, func, *args)
         end_time = time.time()
-        #print(f"Completed {func.__name__} in {end_time - start_time:.4f} seconds")
         return result
 
     async def process_command(self, command_line, sid=False):
@@ -107,7 +105,6 @@ class CommandProcessor:
         if command in commands:
             func = commands[command]
             if asyncio.iscoroutinefunction(func):
-                #print(f"Command {command} is a coroutine function with args: {args}")
                 if command in {'INCR', 'DECR'}:
                     return await func(args, True if command == 'INCR' else False)
                 elif command in {'CONFIG', 'SUB', 'UNSUB', 'MONITOR'}:
@@ -115,7 +112,6 @@ class CommandProcessor:
                 else:
                     return await func(args)
             else:
-                #print(f"Command {command} is a blocking function, running in executor with args: {args}")
                 if command in {'INCR', 'DECR'}:
                     return await self.run_in_executor('thread', func, args, True if command == 'INCR' else False)
                 elif command in {'CONFIG', 'SUB', 'UNSUB', 'MONITOR'}:
@@ -677,7 +673,7 @@ class QueryCommandHandler:
     def __init__(self, processor):
         self.processor = processor  # Reference to the CommandProcessor
 
-    async def query_command(self, args):
+    async def query_command(self, args, batch_size=1000):
         """Handles the QUERY command."""
         parts = args.split(' ', 1)  # Split the arguments by space
         root = parts[0]  # Get the root key
@@ -699,17 +695,17 @@ class QueryCommandHandler:
             conditions = conditions.replace(limit_str, "").strip()
 
         if not await self.processor.sharding_manager.has_sharding_is_sharding_master():
-            local_results = await self.process_local_query(root, conditions, modifiers)  # Process the query locally
+            local_results = await self.process_local_query(root, conditions, modifiers, batch_size)  # Process the query locally
 
             if isinstance(local_results, str):
                 return local_results
-            return ujson.dumps(local_results)
+            return await self.batch_results(local_results, batch_size)
 
         host = AppState().config_store.get('HOST')
         port = AppState().config_store.get('PORT')
         shard_uris = [f"{shard}:{port}" for shard in AppState().config_store.get('SHARDS') if shard != host]  # Get the URIs of the shards
         remote_results = await self.processor.sharding_manager.broadcast_query(f'QUERY {root} {conditions}', shard_uris)  # Broadcast the query to shards
-        local_results = await self.process_local_query(root, conditions, modifiers)  # Process the query locally
+        local_results = await self.process_local_query(root, conditions, modifiers, batch_size)  # Process the query locally
 
         if isinstance(remote_results, list) and len(remote_results) == 1 and isinstance(remote_results[0], str):
             remote_results = remote_results[0]
@@ -720,9 +716,9 @@ class QueryCommandHandler:
         if isinstance(final_results, (str, int, float)):
             return str(final_results)
 
-        return ujson.dumps(final_results)
+        return await self.batch_results(final_results, batch_size)
 
-    async def process_local_query(self, root, conditions, modifiers=None):
+    async def process_local_query(self, root, conditions, modifiers=None, batch_size=1000):
         """Processes a query locally."""
         key_parts = root.split(':')
         main_key = key_parts[0]  # Get the main key
@@ -781,7 +777,14 @@ class QueryCommandHandler:
         if results:
             await self.processor.cache_handler.add_to_cache(command, root, results)
 
-        return results
+        return await self.batch_results(results, batch_size)
+
+    async def batch_results(self, results, batch_size):
+        """Batches the results into smaller chunks."""
+        batched_results = []
+        for i in range(0, len(results), batch_size):
+            batched_results.append(results[i:i+batch_size])
+        return batched_results
 
 class ShardCommandHandler:
     def __init__(self, processor):
