@@ -23,7 +23,7 @@ config = {
     "REPLICATION_SLAVES": [],  # List of replication slaves
     "SHARDING_TYPE": "MASTER",  # Default sharding type
     "SHARDING": "0",  # Disable sharding by default
-    "SHARDING_BATCH_SIZE": "10",  # Default batch size for sharding
+    "SHARDING_BATCH_SIZE": "500",  # Default batch size for sharding
     "SHARDS": []  # List of shards
 }
 

@@ -18,7 +18,7 @@
     ],
     "SHARDING_TYPE": "MASTER",
     "SHARDING": "0",
-    "SHARDING_BATCH_SIZE": "50",
+    "SHARDING_BATCH_SIZE": "500",
     "SHARDS": [
         "127.0.0.1",
         "10.0.0.251"

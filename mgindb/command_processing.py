@@ -677,16 +677,17 @@ class QueryCommandHandler:
     def __init__(self, processor):
         self.processor = processor  # Reference to the CommandProcessor
 
-    async def batch_and_send_results(self, results, websocket, batch_size=1000):
+    async def batch_and_send_results(self, results, websocket, CHUNK_SIZE):
         """Batches the results into smaller chunks and sends them via WebSocket."""
         total_results = len(results)
-        for i in range(0, total_results, batch_size):
-            batch = results[i:i + batch_size]
+        for i in range(0, total_results, CHUNK_SIZE):
+            batch = results[i:i + CHUNK_SIZE]
             await websocket.send(ujson.dumps(batch))
 
     async def query_command(self, args):
         """Handles the QUERY command."""
         websocket = AppState().websocket  # Get the WebSocket from AppState
+        CHUNK_SIZE = 1000
         parts = args.split(' ', 1)  # Split the arguments by space
         root = parts[0]  # Get the root key
         conditions = parts[1] if len(parts) > 1 else ""  # Get the conditions
@@ -712,8 +713,8 @@ class QueryCommandHandler:
             if isinstance(local_results, str):
                 return local_results
 
-            if len(local_results) > 1000:
-                await self.batch_and_send_results(local_results, websocket)
+            if len(local_results) > CHUNK_SIZE:
+                await self.batch_and_send_results(local_results, websocket, CHUNK_SIZE)
 
             return ujson.dumps(local_results)
 
@@ -733,7 +734,7 @@ class QueryCommandHandler:
             return str(final_results)
 
         if len(final_results) > 1000:
-            await self.batch_and_send_results(final_results, websocket)
+            await self.batch_and_send_results(final_results, websocket, CHUNK_SIZE)
             return "Results sent in batches via WebSocket."
 
         return ujson.dumps(final_results)
@@ -810,7 +811,7 @@ class ShardCommandHandler:
         if await self.processor.replication_manager.has_replication_is_replication_master():
             data = ujson.dumps(AppState().data_store)  # Get the data as a JSON string
             indices = ujson.dumps(AppState().indices)  # Get the indices as a JSON string
-            CHUNK_SIZE = 5000
+            CHUNK_SIZE = 1000
             data_chunks = [data[i:i+CHUNK_SIZE] for i in range(0, len(data), CHUNK_SIZE)]  # Split the data into chunks
             indices_chunks = [indices[i:i+CHUNK_SIZE] for i in range(0, len(indices), CHUNK_SIZE)]  # Split the indices into chunks
 

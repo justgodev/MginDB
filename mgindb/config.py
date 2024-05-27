@@ -43,7 +43,7 @@ def get_default_config():
         "REPLICATION_SLAVES": [],  # Default replication slaves
         "SHARDING_TYPE": "MASTER",  # Default sharding type
         "SHARDING": "0",  # Disable sharding by default
-        "SHARDING_BATCH_SIZE": "10",  # Default sharding batch size
+        "SHARDING_BATCH_SIZE": "500",  # Default sharding batch size
         "SHARDS": []  # Default shards
     }
 
