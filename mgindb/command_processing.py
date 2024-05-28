@@ -733,7 +733,7 @@ class QueryCommandHandler:
         if isinstance(final_results, (str, int, float)):
             return str(final_results)
 
-        if len(final_results) > 1000:
+        if len(final_results) > CHUNK_SIZE:
             await self.batch_and_send_results(final_results, websocket, CHUNK_SIZE)
             return "Results sent in batches via WebSocket."
 
