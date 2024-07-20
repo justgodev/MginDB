@@ -227,6 +227,9 @@ class BlockchainManager:
             return "Error adding transaction"
 
     async def create_and_save_block(self):
+        from .scheduler import SchedulerManager  # Scheduler management
+        self.scheduler_manager = SchedulerManager()  # Manages the scheduler
+
         chain_length = self.app_state.config_store['BLOCKCHAIN_DATA']['chain_length']
         previous_hash = self.app_state.config_store['BLOCKCHAIN_DATA']['previous_hash']
 
@@ -433,6 +436,9 @@ class BlockchainManager:
         return base58_address.decode('utf-8')
 
     async def new_wallet(self, *args, **kwargs):
+        from .scheduler import SchedulerManager  # Scheduler management
+        self.scheduler_manager = SchedulerManager()  # Manages the scheduler
+
         if await self.has_blockchain():
             words, seed = await self.generate_mnemonic()
             private_key, public_key, address = await self.generate_keys_from_seed(seed)
