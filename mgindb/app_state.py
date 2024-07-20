@@ -22,10 +22,14 @@ class AppState:
             cls.scheduled_tasks = {}  # Dictionary of scheduled tasks
             cls.sessions = {}  # Active sessions
             cls.config_store = {}  # Configuration store
-            cls.data_store = {}  # Main data store
+            cls.blockchain = []  #  Blockchain
+            cls.pending_transactions = []  # Pending transactions
+            cls.wallets = {}  # Wallets
+            cls.data_store = {}  # Data store
             cls.expires_store = {}  # Expiry times for data entries
             cls.indices = {}  # Indices for data
             cls.monitor_subscribers = set()  # Set of monitor subscribers
+            cls.node_subscribers = set()  # Set of node subscribers
             cls.sub_pub = {}  # Publish/subscribe dictionary
 
             # Cache
@@ -36,4 +40,7 @@ class AppState:
             # Changes tracking
             cls.data_has_changed = False  # Flag to track data changes
             cls.indices_has_changed = False  # Flag to track indices changes
+            cls.blockchain_has_changed = False  # Flag to track blockchain changes
+            cls.blockchain_pending_transactions_has_changed = False  # Flag to track blockchain pending transactions changes
+            cls.blockchain_wallets_has_changed = False  # Flag to track blockchain wallets changes
         return cls._instance  # Return the singleton instance

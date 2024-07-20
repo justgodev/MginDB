@@ -7,6 +7,7 @@ from .backup_manager import BackupManager  # Backup management
 from .data_manager import DataManager  # Data management
 from .indices_manager import IndicesManager  # Indices management
 from .replication_manager import ReplicationManager  # Replication management
+from .blockchain_manager import BlockchainManager  # Blockchain management
 
 # Instantiate managers
 scheduler_manager = SchedulerManager()
@@ -14,6 +15,7 @@ backup_manager = BackupManager()
 data_manager = DataManager()
 indices_manager = IndicesManager()
 replication_manager = ReplicationManager()
+blockchain_manager = BlockchainManager()
 
 # Event to signal stopping the server
 stop_event = asyncio.Event()
@@ -50,6 +52,16 @@ async def signal_stop():
 
     print("Saving scheduler...")
     scheduler_manager.save_scheduler()
+
+    if await blockchain_manager.has_blockchain():
+        print("Saving blockchain...")
+        blockchain_manager.save_blockchain
+
+        print("Saving blockchain pending transactions...")
+        blockchain_manager.save_blockchain_pending_transactions()
+
+        print("Saving blockchain wallets...")
+        blockchain_manager.save_blockchain_wallets()
 
     # Handle replication shutdown for master and slave
     if await replication_manager.has_replication_is_replication_master():

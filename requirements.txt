@@ -10,3 +10,10 @@ prompt_toolkit
 requests
 uvloop
 ujson
+mnemonic
+bip_utils
+cryptography
+base58
+aiofiles
+otplib
+qrcode

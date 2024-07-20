@@ -6,6 +6,7 @@ from .config import load_config  # Configuration loading
 from .license_manager import LicenseManager  # License management
 from .update_manager import UpdateManager  # Update management
 from .scheduler import SchedulerManager  # Scheduler management
+from .blockchain_manager import BlockchainManager  # Data management
 from .data_manager import DataManager  # Data management
 from .indices_manager import IndicesManager  # Indices management
 from .replication_manager import ReplicationManager  # Replication management
@@ -24,6 +25,7 @@ class ServerManager:
         self.license_manager = LicenseManager()  # Manages licensing
         self.updater = UpdateManager()  # Manages updates
         self.scheduler_manager = SchedulerManager()  # Manages the scheduler
+        self.blockchain_manager = BlockchainManager()  # Manages blockchain
         self.data_manager = DataManager()  # Manages data
         self.indices_manager = IndicesManager()  # Manages indices
         self.replication_manager = ReplicationManager()  # Manages replication
@@ -79,6 +81,17 @@ class ServerManager:
             print("Loading data...")  # Print message indicating data loading
             await self.run_in_executor(self.data_manager.load_data)  # Load data asynchronously
 
+            # Load blockchain manager
+            if await self.blockchain_manager.has_blockchain():
+                print("Loading blockchain...")
+                await self.blockchain_manager.load_blockchain()  # Load blockchain asynchronously
+
+                print("Loading blockchain pending transactions...")
+                await self.blockchain_manager.load_blockchain_pending_transactions()  # Load pending transactions asynchronously
+
+                print("Loading blockchain wallets...")
+                await self.blockchain_manager.load_blockchain_wallets()  # Load wallets asynchronously
+
             # Load indices
             print("Loading indices...")  # Print message indicating indices loading
             await self.run_in_executor(self.indices_manager.load_indices)  # Load indices asynchronously
@@ -116,7 +129,7 @@ class ServerManager:
             port = self.app_state.config_store.get('PORT')  # Get port from config
             
             websocket_manager = WebSocketManager(self.thread_executor, self.process_executor)  # Create an instance of WebSocketManager
-            await websockets.serve(websocket_manager.handle_websocket, host, port)  # Start the WebSocket server
+            await websockets.serve(websocket_manager.handle_websocket, host, port, max_size=10*1024*1024)  # Start the WebSocket server
             print(f"WebSocket serving on {host}:{port}")  # Print message with WebSocket server details
 
             # Wait for stop signal

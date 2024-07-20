@@ -30,6 +30,8 @@ class Subscriptions:
         for key in keys:
             if key == "MONITOR":
                 self.app_state.monitor_subscribers.add(sid)
+            elif key == "NODE":
+                self.app_state.node_subscribers.add(sid)
             else:
                 if key not in self.app_state.sub_pub:
                     self.app_state.sub_pub[key] = set()
@@ -51,6 +53,8 @@ class Subscriptions:
         for key in keys:
             if key == "MONITOR":
                 self.app_state.monitor_subscribers.discard(sid)
+            elif key == "NODE":
+                self.app_state.node_subscribers.discard(sid)
             elif key in self.app_state.sub_pub and sid in self.app_state.sub_pub[key]:
                 self.app_state.sub_pub[key].remove(sid)
                 if not self.app_state.sub_pub[key]:
@@ -62,6 +66,7 @@ class Notifier:
     def __init__(self, app_state):
         """Initialize Notifier with application state."""
         self.app_state = app_state
+        self.last_node_index = -1  # Track the last node that received a transaction
 
     async def notify_monitors(self, command_line, sid):
         """
@@ -106,6 +111,26 @@ class Notifier:
 
         for sid in subscribers:
             await self.send_websocket_message(sid, message)
+
+    async def notify_nodes(self, transaction):
+        """
+        Notify node subscribers with the transaction data in a round-robin manner.
+
+        Args:
+            transaction (dict): The transaction data to send.
+        """
+        message = ujson.dumps({
+            "transaction": transaction
+        })
+
+        node_subscribers = list(self.app_state.node_subscribers)
+        num_nodes = len(node_subscribers)
+
+        if num_nodes > 0:
+            # Determine the next node to receive the transaction
+            self.last_node_index = (self.last_node_index + 1) % num_nodes
+            next_node_sid = node_subscribers[self.last_node_index]
+            await self.send_websocket_message(next_node_sid, message)
 
     async def send_websocket_message(self, sid, message):
         """
@@ -189,3 +214,12 @@ class SubPubManager:
             data (dict): The data to send.
         """
         await self.notifier.notify_subscribers(key, data)
+
+    async def notify_nodes(self, transaction):
+        """
+        Notify all node subscribers with the transaction data.
+
+        Args:
+            transaction (dict): The transaction data to send.
+        """
+        await self.notifier.notify_nodes(transaction)

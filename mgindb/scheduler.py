@@ -10,11 +10,13 @@ from .constants import SCHEDULER_FILE  # Importing SCHEDULER_FILE constant from 
 from .data_manager import DataManager  # Importing DataManager class
 from .indices_manager import IndicesManager  # Importing IndicesManager class
 from .cache_manager import CacheManager  # Importing CacheManager class
+from .blockchain_manager import BlockchainManager  # Importing BlockchainManager class
 
 # Instantiate managers
 data_manager = DataManager()
 indices_manager = IndicesManager()
 cache_manager = CacheManager()
+blockchain_manager = BlockchainManager()
 
 class SchedulerManager:
     def __init__(self):
@@ -119,6 +121,10 @@ class SchedulerTasks:
             if save_timer >= save_interval:
                 data_manager.save_data()
                 indices_manager.save_indices()
+                if await blockchain_manager.has_blockchain():
+                    blockchain_manager.save_blockchain()
+                    blockchain_manager.save_blockchain_pending_transactions()
+                    blockchain_manager.save_blockchain_wallets()
                 save_timer = 0
 
             await asyncio.sleep(1)

@@ -23,17 +23,5 @@
         "127.0.0.1",
         "10.0.0.251"
     ],
-    "BLOCKCHAIN": "1",
-    "BLOCKCHAIN_NAME": "World Health Wallet",
-    "BLOCKCHAIN_SYMBOL": "WHW",
-    "BLOCKCHAIN_TX_PER_BLOCK": 10,
-    "BLOCKCHAIN_DATA": {
-        "genesis_address": "MvCteFnh9KHfg4VAiHMztsgcxsjshzX1hT",
-        "chain_length": 1553,
-        "previous_hash": "000d892679ef995d50475c31c3407c72bd106749af2d58bee6e247f815ce42fc",
-        "latest_block": 1721276445,
-        "validation_time": 0.02626204490661621,
-        "difficulty": 3,
-        "fee": 0
-    }
+    "BLOCKCHAIN": "1"
 }

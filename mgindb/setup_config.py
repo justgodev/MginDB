@@ -24,7 +24,12 @@ config = {
     "SHARDING_TYPE": "MASTER",  # Default sharding type
     "SHARDING": "0",  # Disable sharding by default
     "SHARDING_BATCH_SIZE": "500",  # Default batch size for sharding
-    "SHARDS": []  # List of shards
+    "SHARDS": [],  # List of shards
+    "BLOCKCHAIN": [],  # Blockchain
+    "BLOCKCHAIN_NAME": "",  # Blockchain name
+    "BLOCKCHAIN_SYMBOL": "",  # Blockchain symbol
+    "BLOCKCHAIN_TX_PER_BLOCK": 10,  # Blockchain tx per block
+    "BLOCKCHAIN_DATA": {}  # Blockchain conf
 }
 
 # Write the configuration to a JSON file

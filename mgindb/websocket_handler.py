@@ -19,11 +19,11 @@ class WebSocketSession:
         self.websocket = websocket
         self.command_processor = command_processor
         self.sid = str(uuid.uuid4())
-        AppState().sessions[self.sid] = {
+        self.app_state = AppState()
+        self.app_state.sessions[self.sid] = {
             'websocket': websocket,
             'subscribed_keys': set(),
         }
-        AppState().websocket = websocket
 
     async def start(self):
         """Start the WebSocket session."""
@@ -32,21 +32,19 @@ class WebSocketSession:
             await self.listen_for_messages()
         except websockets.exceptions.ConnectionClosedOK:
             pass
+        except websockets.exceptions.ConnectionClosedError:
+            pass
         except asyncio.CancelledError:
             await self.websocket.close(code=1001, reason='Server shutdown')
         except Exception as e:
             print(f"Failed to handle message due to: {e}")
         finally:
-            del AppState().sessions[self.sid]
+            await self.clean_up()
 
     async def authenticate(self):
-        """
-        Authenticate the WebSocket connection.
-
-        This method expects the first message to contain authentication data.
-        """
-        expected_username = AppState().config_store.get('USERNAME', '')
-        expected_password = AppState().config_store.get('PASSWORD', '')
+        """Authenticate the WebSocket connection."""
+        expected_username = self.app_state.config_store.get('USERNAME', '')
+        expected_password = self.app_state.config_store.get('PASSWORD', '')
 
         first_message = True
         async for message in self.websocket:
@@ -61,17 +59,7 @@ class WebSocketSession:
                 break
 
     async def check_credentials(self, message, expected_username, expected_password):
-        """
-        Check the provided credentials against expected values.
-
-        Args:
-            message (str): The received message containing authentication data.
-            expected_username (str): The expected username.
-            expected_password (str): The expected password.
-
-        Returns:
-            bool: True if credentials are valid, False otherwise.
-        """
+        """Check the provided credentials against expected values."""
         try:
             auth_data = ujson.loads(message)
             user_provided = auth_data.get('username', '')
@@ -88,6 +76,22 @@ class WebSocketSession:
             response = await self.command_processor.process_command(message, self.sid)
             response = ujson.dumps(response) if isinstance(response, dict) else str(response)
             await self.websocket.send(response)
+
+    async def clean_up(self):
+        """Clean up the session and remove subscriptions."""
+        # Retrieve subscribed keys before removing the session
+        session = self.app_state.sessions.pop(self.sid, None)
+        if session:
+            subscribed_keys = session.get('subscribed_keys', set())
+            for key in subscribed_keys:
+                if key == "MONITOR":
+                    self.app_state.monitor_subscribers.discard(self.sid)
+                elif key == "NODE":
+                    self.app_state.node_subscribers.discard(self.sid)
+                elif key in self.app_state.sub_pub:
+                    self.app_state.sub_pub[key].discard(self.sid)
+                    if not self.app_state.sub_pub[key]:
+                        del self.app_state.sub_pub[key]
 
 # Original function to handle websockets using the new WebSocketManager
 async def handle_websocket(websocket, path, thread_executor, process_executor):

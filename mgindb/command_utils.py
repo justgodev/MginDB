@@ -260,75 +260,71 @@ class QueryUtil:
 
     def eval_conditions_using_indices(self, conditions, indices, main_key, joins=None):
         joins = joins or []
-        conditions = conditions.replace("AND", "and").replace("OR", "or")  # Normalize for splitting
-        condition_list = [cond.strip() for cond in re.split(r'\s+(and|or)\s+', conditions.strip())]
+        # Split the conditions by logical operators while keeping the operators
+        condition_parts = re.split(r'(\sAND\s|\sOR\s)', conditions)
         results = []
         current_ids = set()
-        current_logic = "and"
+        current_logic = None
 
-        index_missing = False
-        value_missing = False
-
-        for condition_part in condition_list:
-            if condition_part in ["and", "or"]:
+        for condition_part in condition_parts:
+            condition_part = condition_part.strip()
+            if condition_part in ['AND', 'OR']:
                 current_logic = condition_part
+                continue
+
+            if not condition_part:
                 continue
 
             field, operation, value = self.parse_condition(condition_part)
             if not field or not operation or value is None:
-                print("Error: Parsed condition is incorrect, check syntax.")
-                return []
+                continue  # Skip invalid conditions
 
             nested_fields = field.split(':')
             index_level = indices.get(main_key)
 
-            # Traverse through nested indices
             for nested_field in nested_fields:
                 if isinstance(index_level, dict) and nested_field in index_level:
                     index_level = index_level[nested_field]
                 else:
-                    index_missing = True
+                    index_level = None
                     break
 
-            if index_missing:
-                continue  # Skip to the next condition if index path is incorrect
+            if index_level is None or 'values' not in index_level:
+                continue
 
-            if 'values' in index_level:
-                indexed_data = index_level['values']
-                matching_ids = set()
+            indexed_data = index_level['values']
+            matching_ids = set()
 
-                if index_level['type'] == 'string':
-                    for key, ids in indexed_data.items():
-                        if self.compare_values(key, operation, value):
-                            matching_ids.update([id.split(':')[1] for id in ids.split(',')])
-                elif index_level['type'] == 'set':
-                    for key, ids in indexed_data.items():
-                        if self.compare_values(key, operation, value):
-                            matching_ids.update([id.split(':')[1] for id in ids])
+            if index_level['type'] == 'string':
+                for key, ids in indexed_data.items():
+                    if self.compare_values(key, operation, value):
+                        matching_ids.update(ids.split(','))
+            elif index_level['type'] == 'set':
+                for key, ids in indexed_data.items():
+                    if self.compare_values(key, operation, value):
+                        matching_ids.update(ids)
 
-                if not matching_ids:
-                    value_missing = True
-
-                if current_logic == "and":
-                    if current_ids:
-                        current_ids &= matching_ids
-                    else:
-                        current_ids = matching_ids
-                elif current_logic == "or":
+            if not current_ids:
+                current_ids = matching_ids
+            else:
+                if current_logic == 'AND':
+                    current_ids &= matching_ids
+                elif current_logic == 'OR':
                     current_ids |= matching_ids
 
-        if index_missing or (not current_ids and not value_missing):
+        if not current_ids:
             return self.fallback_full_data_scan(main_key, conditions, joins)
 
         final_results = []
         for data_id in current_ids:
+            data_id = data_id.split(':')[1]  # Ensure correct ID format
             if data_id in self.app_state.data_store[main_key]:
                 entry = {'key': data_id, **self.app_state.data_store[main_key][data_id]}
                 for join_table, join_key in joins:
                     self.process_joins(entry, join_table, join_key, indices)
                 final_results.append(entry)
 
-        return final_results if final_results else []
+        return final_results
 
     def process_joins(self, entry, join_table, join_key, indices):
         join_values = entry.get(join_key, [])
@@ -382,11 +378,17 @@ class QueryUtil:
 
     def eval_condition(self, entry, condition):
         or_conditions = condition.split(' OR ')
-        return any(self.eval_and_conditions(entry, or_cond.strip()) for or_cond in or_conditions)
+        for or_condition in or_conditions:
+            if self.eval_and_conditions(entry, or_condition.strip()):
+                return True
+        return False
 
     def eval_and_conditions(self, entry, and_condition):
         and_parts = and_condition.split(' AND ')
-        return all(self.eval_single_condition(entry, cond.strip()) for cond in and_parts)
+        for and_part in and_parts:
+            if not self.eval_single_condition(entry, and_part.strip()):
+                return False
+        return True
 
     def eval_single_condition(self, entry, condition):
         field, op, expected = self.parse_condition(condition)

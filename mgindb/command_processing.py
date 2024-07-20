@@ -8,6 +8,7 @@ from .config import save_config  # Function to save configuration
 from .update_manager import UpdateManager  # Update management
 from .scheduler import SchedulerManager  # Scheduler management
 from .sharding_manager import ShardingManager  # Sharding management
+from .blockchain_manager import BlockchainManager  # Blockchain management
 from .data_manager import DataManager  # Data management
 from .indices_manager import IndicesManager  # Indices management
 from .backup_manager import BackupManager  # Backup management
@@ -15,15 +16,19 @@ from .sub_pub_manager import SubPubManager  # Publish/subscribe management
 from .command_utils import CommandUtilsManager  # Utility functions for command handling
 from .replication_manager import ReplicationManager  # Replication management
 from .cache_manager import CacheManager  # Cache management
+from .upload_manager import UploadManager  # Upload management
+from .two_factor_manager import TwoFactorManager  # Two Factor management
 
 class CommandProcessor:
     def __init__(self, thread_executor, process_executor):
+        self.app_state = AppState()
         self.thread_executor = thread_executor
         self.process_executor = process_executor
         # Initialize other managers and handlers
         self.updater = UpdateManager()  # Manages updates
         self.scheduler_manager = SchedulerManager()  # Manages the scheduler
         self.sharding_manager = ShardingManager()  # Manages sharding
+        self.blockchain_manager = BlockchainManager()  # Manages blockchain
         self.data_manager = DataManager()  # Manages data
         self.indices_manager = IndicesManager()  # Manages indices
         self.backup_manager = BackupManager()  # Manages backups
@@ -35,6 +40,8 @@ class CommandProcessor:
         self.query_handler = QueryCommandHandler(self)  # Handles query commands
         self.shard_handler = ShardCommandHandler(self)  # Handles shard commands
         self.cache_handler = CacheManager()  # Handles cache commands
+        self.upload_manager = UploadManager()  # Handles upload commands
+        self.two_factor_manager = TwoFactorManager()  # Handles two factor commands
 
     async def run_in_executor(self, executor_type, func, *args):
         """
@@ -102,24 +109,51 @@ class CommandProcessor:
             'REPLICATE': self.shard_handler.replicate_command,
             'RESHARD': self.shard_handler.reshard_command,
             'ROLLBACK': self.backup_manager.backup_rollback,
+            'NEW_WALLET': self.blockchain_manager.new_wallet,
+            'GET_WALLET': self.blockchain_manager.get_wallet,
+            'BLOCK': self.blockchain_manager.add_block,
+            'UPLOAD_FILE': self.upload_manager.save_file,
+            'READ_FILE': self.upload_manager.read_file,
+            'NEW_2FA': self.two_factor_manager.generate,
+            'VERIFY_2FA': self.two_factor_manager.verify,
         }
 
         if command in commands:
             func = commands[command]
             if asyncio.iscoroutinefunction(func):
                 #print(f"Command {command} is a coroutine function with args: {args}")
-                if command in {'INCR', 'DECR'}:
+                if command == 'UPLOAD_FILE':
+                    key, data = args.split(' ', 1)
+                    return await func(key, data.encode())
+                elif command in {'INCR', 'DECR'}:
                     return await func(args, True if command == 'INCR' else False)
                 elif command in {'CONFIG', 'SUB', 'UNSUB', 'MONITOR'}:
                     return await func(args, sid)
+                elif command == 'BLOCK':
+                    return await func(args)
+                elif command == 'NEW_2FA':
+                    account_name, issuer_name = args.split(' ')
+                    return await func(account_name, issuer_name)
+                elif command == 'VERIFY_2FA':
+                    secret, code = args.split(' ')
+                    return await func(secret, code)
                 else:
                     return await func(args)
             else:
                 #print(f"Command {command} is a blocking function, running in executor with args: {args}")
-                if command in {'INCR', 'DECR'}:
+                if command == 'UPLOAD_FILE':
+                    key, data = args.split(' ', 1)
+                    return await self.run_in_executor('thread', func, key, data.encode())
+                elif command in {'INCR', 'DECR'}:
                     return await self.run_in_executor('thread', func, args, True if command == 'INCR' else False)
                 elif command in {'CONFIG', 'SUB', 'UNSUB', 'MONITOR'}:
                     return await self.run_in_executor('thread', func, args, sid)
+                elif command == 'NEW_2FA':
+                    account_name, issuer_name = args.split(' ')
+                    return await self.run_in_executor('thread', func, account_name, issuer_name)
+                elif command == 'VERIFY_2FA':
+                    secret, code = args.split(' ')
+                    return await self.run_in_executor('thread', func, secret, code)
                 else:
                     return await self.run_in_executor('thread', func, args)
         else:
@@ -296,6 +330,23 @@ class DataCommandHandler:
         responses = []
         sharding_active = await self.processor.sharding_manager.has_sharding()  # Check if sharding is active
         for command in commands:
+            # Extract wallet if present
+            wallet_sender_match = re.search(r"FOR WALLET:([A-Za-z0-9]+)", command.strip())  # Match the wallet pattern
+            wallet_receiver_match = re.search(r"TO WALLET:([A-Za-z0-9]+)", command.strip())  # Match the wallet pattern
+
+            if wallet_sender_match:
+                wallet_sender = wallet_sender_match.group(1)  # Extract the wallet value
+                command = re.sub(r"FOR WALLET:[A-Za-z0-9]+", "", command.strip())  # Remove the wallet part from the command
+            else:
+                wallet_sender = None  # No wallet found
+            
+            if wallet_receiver_match:
+                wallet_receiver = wallet_receiver_match.group(1)  # Extract the wallet value
+                command = re.sub(r"TO WALLET:[A-Za-z0-9]+", "", command.strip())  # Remove the wallet part from the command
+            else:
+                wallet_receiver = None  # No wallet found
+            
+            # Extract command
             match = re.match(r"([^ ]+) (.+)", command.strip())  # Match the command pattern
             if not match:
                 responses.append("ERROR: Invalid SET syntax")
@@ -336,6 +387,15 @@ class DataCommandHandler:
 
             if expiry:
                 AppState().expires_store[key_pattern] = expiry  # Set the expiry
+            
+            # Add transaction to the blockchain
+            if await self.processor.blockchain_manager.has_blockchain():
+                sender = wallet_sender  # Example sender, you might replace this with the actual sender information
+                receiver = wallet_receiver  # Example receiver, you might replace this with the actual receiver information
+                amount = 0  # Amount associated with the transaction, you might adjust this based on your use case
+                fee = 0  # Fee associated with the transaction, you might adjust this based on your use case
+                data = str({'command': 'SET', 'key': key_pattern, 'value': value})
+                await self.processor.blockchain_manager.add_transaction(sender, receiver, amount, data, fee)
 
             if await self.processor.replication_manager.has_replication_is_replication_master():
                 replication_command = f"SET {':'.join(parts)} {value}"
@@ -692,6 +752,18 @@ class QueryCommandHandler:
         root = parts[0]  # Get the root key
         conditions = parts[1] if len(parts) > 1 else ""  # Get the conditions
         sharding_active = await self.processor.sharding_manager.has_sharding()  # Check if sharding is active
+
+        # Check if the root key exists
+        keys = root.split(':')
+        
+        # Traverse the data_store dictionary to check if the nested key exists
+        data_store = AppState().data_store
+        for key in keys:
+            if key in data_store:
+                data_store = data_store[key]
+            else:
+                return "[]"  # Return an empty JSON array if any part of the key doesn't exist
+
         if 'JOIN' in conditions and sharding_active:
             return "JOIN operations are not supported in sharding mode."
         modifiers, conditions = self.processor.command_utils_manager.parse_modifiers(conditions)  # Parse the modifiers

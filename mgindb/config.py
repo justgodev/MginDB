@@ -44,7 +44,12 @@ def get_default_config():
         "SHARDING_TYPE": "MASTER",  # Default sharding type
         "SHARDING": "0",  # Disable sharding by default
         "SHARDING_BATCH_SIZE": "500",  # Default sharding batch size
-        "SHARDS": []  # Default shards
+        "SHARDS": [],  # Default shards
+        "BLOCKCHAIN": "0",  # Blockchain
+        "BLOCKCHAIN_NAME": "",  # Blockchain name
+        "BLOCKCHAIN_SYMBOL": "",  # Blockchain symbol
+        "BLOCKCHAIN_TX_PER_BLOCK": 10,  # Blockchain tx per block
+        "BLOCKCHAIN_DATA": {}  # Blockchain conf
     }
 
 def load_config():
