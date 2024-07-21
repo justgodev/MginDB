@@ -4,6 +4,7 @@ import sys
 import time  # Module for time-related functions
 import hashlib  # Module for cryptographic hash functions
 import signal  # Module to handle signals
+import argparse  # Module for command-line argument parsing
 
 # List of required packages
 required_packages = ['websockets', 'ujson']
@@ -135,7 +136,7 @@ async def authenticate(websocket, username, password):
         print("Received empty response during authentication")
         return None
 
-async def process_transaction(websocket, transaction):
+async def process_transaction(websocket, transaction, validator_address):
     new_block = {
         'timestamp': int(time.time()),
         'nonce': 0,
@@ -146,6 +147,7 @@ async def process_transaction(websocket, transaction):
         'txid': transaction['txid'],
         'sender': transaction['sender'],
         'receiver': transaction['receiver'],
+        'validator': validator_address,
         'amount': transaction['amount'],
         'data': transaction['data'],
         'fee': transaction['fee']
@@ -168,12 +170,12 @@ async def mine_block(block, difficulty):
     block['validation_time'] = time.time() - start_time  # Record the time taken to mine the block
     return block
 
-async def handle_message(websocket, message):
+async def handle_message(websocket, message, validator_address):
     try:
         message_data = ujson.loads(message)
         if "transaction" in message_data:
             transaction_data = message_data["transaction"]
-            await process_transaction(websocket, transaction_data)
+            await process_transaction(websocket, transaction_data, validator_address)
         elif "confirmation" in message_data:
             transaction_data = message_data["confirmation"]
             print(cyan("Validated Transaction"), transaction_data)
@@ -183,7 +185,7 @@ async def handle_message(websocket, message):
             print(red(message))
             print()
 
-async def handle_websocket(uri, username, password):
+async def handle_websocket(uri, username, password, validator_address):
     while True:
         try:
             async with websockets.connect(uri) as websocket:
@@ -195,7 +197,7 @@ async def handle_websocket(uri, username, password):
                     while True:
                         message = await websocket.recv()
                         if message:
-                            response = await handle_message(websocket, message)
+                            response = await handle_message(websocket, message, validator_address)
                             if response:
                                 await websocket.send(ujson.dumps(response))
         except asyncio.CancelledError:
@@ -205,12 +207,12 @@ async def handle_websocket(uri, username, password):
             print(red(f"NODE DISCONNECTED. RECONNECTING IN 5 SECONDS..."))
             await asyncio.sleep(5)
 
-async def main(stop_event):
+async def main(stop_event, validator_address):
     uri = "wss://mgindb.digitalwallet.health"  # Replace with your actual WebSocket URI
     username = ""  # Replace with your actual username
     password = ""  # Replace with your actual password
 
-    consumer_task = asyncio.create_task(handle_websocket(uri, username, password))
+    consumer_task = asyncio.create_task(handle_websocket(uri, username, password, validator_address))
 
     # Wait until stop_event is set
     await stop_event.wait()
@@ -225,7 +227,7 @@ def shutdown(loop, stop_event):
     print(red("Shutdown requested. Exiting..."))
     stop_event.set()  # Signal the event to stop the loop
 
-def run():
+def run(validator_address):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     stop_event = asyncio.Event()
@@ -234,10 +236,14 @@ def run():
         loop.add_signal_handler(sig, shutdown, loop, stop_event)
 
     try:
-        loop.run_until_complete(main(stop_event))
+        loop.run_until_complete(main(stop_event, validator_address))
     finally:
         loop.run_until_complete(loop.shutdown_asyncgens())
         loop.close()
 
 if __name__ == '__main__':
-    run()
+    parser = argparse.ArgumentParser(description='Run the validator.')
+    parser.add_argument('validator_address', type=str, help='A parameter to pass to the validator')
+    args = parser.parse_args()
+
+    run(args.validator_address)

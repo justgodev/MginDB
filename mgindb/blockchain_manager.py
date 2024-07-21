@@ -25,6 +25,9 @@ class BlockchainManager:
     
     async def has_blockchain(self):
         return self.app_state.config_store.get('BLOCKCHAIN') == '1'
+    
+    async def is_blockchain_main_node(self):
+        return self.app_state.config_store.get('BLOCKCHAIN_MAIN_NODE') == '1'
 
     def get_all_blockchain(self):
         """Return a copy of all local data stored in the application state."""
@@ -142,6 +145,7 @@ class BlockchainManager:
         """Create the genesis wallet"""
         wallet = await self.new_wallet()
         """Create the genesis block and initialize blockchain configuration."""
+        blockchain_supply = self.app_state.config_store.get('BLOCKCHAIN_SUPPLY', '0')
         genesis_block = {
             'index': 0,
             'timestamp': int(time.time()),
@@ -154,13 +158,20 @@ class BlockchainManager:
             'txid': '',
             'sender': '',
             'receiver': wallet.get('address'),
-            'amount': 0,
+            'amount': blockchain_supply,
             'data': 'Genesis Block',
-            'fee': 0
+            'fee': '0'
         }
         genesis_block['hash'] = await self.calculate_hash(genesis_block)
         self.app_state.blockchain.append(genesis_block)
+        self.app_state.blockchain_has_changed = True
         self.save_blockchain()
+
+        genesis_wallet = self.app_state.wallets.get(wallet.get('address'))
+        if genesis_wallet:
+            genesis_wallet['balance'] = blockchain_supply
+            self.app_state.blockchain_wallets_has_changed = True
+            self.save_blockchain_wallets()
 
         # Initialize blockchain configuration
         self.app_state.config_store['BLOCKCHAIN_DATA'] = {
@@ -170,7 +181,7 @@ class BlockchainManager:
             'latest_block': int(genesis_block['timestamp']),
             'validation_time': genesis_block['validation_time'],
             'difficulty': genesis_block['difficulty'],
-            'fee': 0
+            'fee': self.app_state.config_store['BLOCKCHAIN_SETUP_FEE']
         }
         save_config()
 
@@ -192,40 +203,6 @@ class BlockchainManager:
         data_string = ujson.dumps(data, sort_keys=True).encode()
         return hashlib.sha256(data_string).hexdigest()
 
-
-    async def add_block(self, block_data):
-        from .scheduler import SchedulerManager  # Scheduler management
-        self.scheduler_manager = SchedulerManager()  # Manages the scheduler
-
-        try:
-            # Decode the JSON block data
-            transaction = ujson.loads(block_data)
-            
-            # Add the transaction to the accumulated transactions
-            self.accumulated_transactions.append(transaction)
-
-            # Remove the transaction from pending transactions by txid
-            self.app_state.pending_transactions = [
-                tx for tx in self.app_state.pending_transactions
-                if tx['txid'] != transaction['txid']
-            ]
-
-            # Save pending transactions
-            self.app_state.blockchain_pending_transactions_has_changed = True
-            if not self.scheduler_manager.is_scheduler_active():
-                self.save_blockchain_pending_transactions()
-            
-            # Tx per block
-            if len(self.accumulated_transactions) >= self.tx_per_block:
-                await self.create_and_save_block()
-
-            return ujson.dumps({
-                "confirmation": transaction
-            })
-        except Exception as e:
-            print(f"Error adding transaction: {e}")
-            return "Error adding transaction"
-
     async def create_and_save_block(self):
         from .scheduler import SchedulerManager  # Scheduler management
         self.scheduler_manager = SchedulerManager()  # Manages the scheduler
@@ -242,7 +219,7 @@ class BlockchainManager:
             'size': len(ujson.dumps(self.accumulated_transactions).encode()),
             'previous_hash': previous_hash,
             'data': self.accumulated_transactions,  # Use accumulated transactions
-            'fee': sum(tx['fee'] for tx in self.accumulated_transactions)
+            'fee': str(sum(int(tx['fee']) for tx in self.accumulated_transactions))
         }
 
         # Clear the accumulated transactions
@@ -262,27 +239,42 @@ class BlockchainManager:
         new_difficulty = self.adjust_difficulty(mined_block['validation_time'])
         await self.update_blockchain_data(mined_block, new_difficulty)
 
+        # Dictionary to accumulate rewards for each validator
+        validator_rewards = {}
+
         # Update wallets data
         for txn in mined_block['data']:
             sender_wallet = self.app_state.wallets.get(txn['sender'])
             receiver_wallet = self.app_state.wallets.get(txn['receiver'])
+            validator_address = txn['validator']
 
             if sender_wallet:
-                sender_wallet['balance'] = str(float(sender_wallet['balance']) - txn['amount'] - txn['fee'])
+                sender_wallet['balance'] = str(int(sender_wallet['balance']) - int(txn['amount']) - int(txn['fee']))
                 sender_wallet['last_tx_timestamp'] = mined_block['timestamp']
                 sender_wallet['tx_count'] += 1
                 sender_wallet['tx_data'].append(txn['txid'])
 
             if receiver_wallet and receiver_wallet != sender_wallet:
-                receiver_wallet['balance'] = str(float(receiver_wallet['balance']) + txn['amount'])
+                receiver_wallet['balance'] = str(int(receiver_wallet['balance']) + int(txn['amount']))
                 receiver_wallet['last_tx_timestamp'] = mined_block['timestamp']
                 receiver_wallet['tx_count'] += 1
                 receiver_wallet['tx_data'].append(txn['txid'])
+            
+            if validator_address:
+                if validator_address not in validator_rewards:
+                    validator_rewards[validator_address] = 0
+                validator_rewards[validator_address] += int(self.app_state.config_store['BLOCKCHAIN_VALIDATOR_REWARD'])
 
         # Save blockchain wallets
         self.app_state.blockchain_wallets_has_changed = True
         if not self.scheduler_manager.is_scheduler_active():
             self.save_blockchain_wallets()
+        
+        # Create a single transaction per validator with the total rewards
+        genesis_address = self.app_state.config_store['BLOCKCHAIN_DATA']['genesis_address']
+        for validator_address, total_reward in validator_rewards.items():
+            validator_data = str({'Validator reward': [txn['hash'] for txn in mined_block['data'] if txn['validator'] == validator_address]})
+            await self.add_transaction(genesis_address, validator_address, str(total_reward), validator_data)
 
     def adjust_difficulty(self, validation_time):
         target_time = 5  # Target time per block in seconds
@@ -326,7 +318,7 @@ class BlockchainManager:
                 return False
         return True
 
-    async def add_transaction(self, sender, receiver, amount, data, fee=0):
+    async def add_transaction(self, sender, receiver, amount="0", data="", fee="0"):
         from .scheduler import SchedulerManager  # Scheduler management
         self.scheduler_manager = SchedulerManager()  # Manages the scheduler
 
@@ -368,7 +360,7 @@ class BlockchainManager:
         transaction = {
             'sender': sender,
             'receiver': receiver,
-            'amount': amount,
+            'amount': str(int(float(amount))),
             'data': encrypted_data,
             'fee': fee
         }
@@ -389,10 +381,9 @@ class BlockchainManager:
     async def update_blockchain_data(self, block, difficulty):
         blockchain_data = self.app_state.config_store['BLOCKCHAIN_DATA']
         blockchain_data['previous_hash'] = block['hash']
-        blockchain_data['chain_length'] = len(self.app_state.blockchain)
+        blockchain_data['chain_length'] = block['index'] + 1
         blockchain_data['latest_block'] = block['timestamp']
         blockchain_data['validation_time'] = block['validation_time']
-        blockchain_data['fee'] = block['fee']
         blockchain_data['difficulty'] = difficulty
         
         save_config()

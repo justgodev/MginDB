@@ -393,9 +393,8 @@ class DataCommandHandler:
                 sender = wallet_sender  # Example sender, you might replace this with the actual sender information
                 receiver = wallet_receiver  # Example receiver, you might replace this with the actual receiver information
                 amount = 0  # Amount associated with the transaction, you might adjust this based on your use case
-                fee = 0  # Fee associated with the transaction, you might adjust this based on your use case
                 data = str({'command': 'SET', 'key': key_pattern, 'value': value})
-                await self.processor.blockchain_manager.add_transaction(sender, receiver, amount, data, fee)
+                await self.processor.blockchain_manager.add_transaction(sender, receiver, amount, data)
 
             if await self.processor.replication_manager.has_replication_is_replication_master():
                 replication_command = f"SET {':'.join(parts)} {value}"

@@ -10,7 +10,7 @@
     "SCHEDULER": "1",
     "QUERY_CACHING": "1",
     "QUERY_CACHING_TTL": "300",
-    "REPLICATION": "1",
+    "REPLICATION": "0",
     "REPLICATION_TYPE": "MASTER",
     "REPLICATION_MASTER": "",
     "REPLICATION_SLAVES": [
@@ -24,16 +24,19 @@
         "10.0.0.251"
     ],
     "BLOCKCHAIN": "1",
-    "BLOCKCHAIN_NAME": "World Health Wallet",
-    "BLOCKCHAIN_SYMBOL": "WHW",
-    "BLOCKCHAIN_TX_PER_BLOCK": 10,
+    "BLOCKCHAIN_DECIMAL": "8",
+    "BLOCKCHAIN_SUPPLY": "400000000000000000",
+    "BLOCKCHAIN_MAX_SUPPLY": "400000000000000000",
+    "BLOCKCHAIN_SETUP_FEE": "100000000",
+    "BLOCKCHAIN_VALIDATOR_REWARD": "100000000",
+    "BLOCKCHAIN_TX_PER_BLOCK": "10",
     "BLOCKCHAIN_DATA": {
-        "genesis_address": "MvCteFnh9KHfg4VAiHMztsgcxsjshzX1hT",
-        "chain_length": 1553,
-        "previous_hash": "000d892679ef995d50475c31c3407c72bd106749af2d58bee6e247f815ce42fc",
-        "latest_block": 1721276445,
-        "validation_time": 0.02626204490661621,
-        "difficulty": 3,
-        "fee": 0
+        "genesis_address": "MtNAoKNMJG5SSeEWdqag5dgWxJLUgbbGm8",
+        "chain_length": 1,
+        "previous_hash": "244aad8138aa29a83659bf822c6d3a49f4cf4191eb11a91157b2d005901fe5e0",
+        "latest_block": 1721509579,
+        "validation_time": 0,
+        "difficulty": 1,
+        "fee": "100000000"
     }
 }

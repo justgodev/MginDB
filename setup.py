@@ -19,7 +19,14 @@ setup(
         'croniter',
         'requests',
         'uvloop',
-        'ujson'
+        'ujson',
+        'mnemonic',
+        'bip_utils',
+        'cryptography',
+        'base58',
+        'aiofiles',
+        'qrcode',
+        'pyotp'
     ],
     entry_points={
         'console_scripts': [
@@ -27,7 +34,7 @@ setup(
         ],
     },
     classifiers=[
-        'Development Status :: 0.1.2 - Public Release',
+        'Development Status :: 0.1.5 - Public Release',
         'Intended Audience :: Developers',
         'Natural Language :: English',
         'Operating System :: OS Independent',

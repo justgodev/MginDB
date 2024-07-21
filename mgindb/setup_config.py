@@ -25,10 +25,13 @@ config = {
     "SHARDING": "0",  # Disable sharding by default
     "SHARDING_BATCH_SIZE": "500",  # Default batch size for sharding
     "SHARDS": [],  # List of shards
-    "BLOCKCHAIN": [],  # Blockchain
-    "BLOCKCHAIN_NAME": "",  # Blockchain name
-    "BLOCKCHAIN_SYMBOL": "",  # Blockchain symbol
-    "BLOCKCHAIN_TX_PER_BLOCK": 10,  # Blockchain tx per block
+    "BLOCKCHAIN": "0",  # Blockchain
+    "BLOCKCHAIN_DECIMAL": "8",  # Blockchain decimal
+    "BLOCKCHAIN_SUPPLY": "",  # Blockchain supply
+    "BLOCKCHAIN_MAX_SUPPLY": "",  # Blockchain max supply
+    "BLOCKCHAIN_SETUP_FEE": "",  # Blockchain setup fee
+    "BLOCKCHAIN_VALIDATOR_REWARD": "",  # Blockchain validator reward
+    "BLOCKCHAIN_TX_PER_BLOCK": "10",  # Blockchain tx per block
     "BLOCKCHAIN_DATA": {}  # Blockchain conf
 }
 
