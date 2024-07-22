@@ -96,10 +96,10 @@ async def process_transaction(websocket, transaction, validator_address, cache):
     mined_block = await mine_block(new_block, new_block['difficulty'])
 
     try:
-        await websocket.send(f"BLOCK {ujson.dumps(mined_block)}")
+        await websocket.send(f"ADD_TO_BLOCK {ujson.dumps(mined_block)}")
     except websockets.ConnectionClosed:
         print(red("Connection closed, caching the transaction"))
-        cache.append(f"BLOCK {ujson.dumps(mined_block)}")
+        cache.append(f"ADD_TO_BLOCK {ujson.dumps(mined_block)}")
 
 async def calculate_hash(block):
     block_string = ujson.dumps(block, sort_keys=True).encode()
@@ -134,7 +134,7 @@ async def handle_message(websocket, message, validator_address, cache):
             print()
 
 async def initialize_database():
-    async with aiosqlite.connect('blockchain.db') as db:
+    async with aiosqlite.connect('data/blockchain.db') as db:
         await db.execute('''
             CREATE TABLE IF NOT EXISTS blockchain (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -160,10 +160,18 @@ async def initialize_database():
         await db.execute('CREATE INDEX IF NOT EXISTS txid_index ON blockchain (txid)')
         await db.execute('CREATE INDEX IF NOT EXISTS sender_index ON blockchain (sender)')
         await db.execute('CREATE INDEX IF NOT EXISTS receiver_index ON blockchain (receiver)')
+
+        # Create the tx_index table
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS tx_index (
+                txid TEXT PRIMARY KEY,
+                block_index INTEGER
+            )
+        ''')
         await db.commit()
 
 async def sync_blockchain(websocket):
-    async with aiosqlite.connect('blockchain.db') as db:
+    async with aiosqlite.connect('data/blockchain.db') as db:
         async with db.execute('SELECT idx FROM blockchain ORDER BY idx DESC LIMIT 1') as cursor:
             last_row = await cursor.fetchone()
             last_index = last_row[0] if last_row else 0
@@ -184,7 +192,7 @@ async def sync_blockchain(websocket):
             elif isinstance(response_data, dict) and 'data' in response_data:
                 new_blocks = response_data["data"]
                 if isinstance(new_blocks, list) and new_blocks:
-                    async with aiosqlite.connect('blockchain.db') as db:
+                    async with aiosqlite.connect('data/blockchain.db') as db:
                         for block in new_blocks:
                             # Ensure all expected fields are present, adding default values if necessary
                             block.setdefault('previous_hash', "")
@@ -194,9 +202,8 @@ async def sync_blockchain(websocket):
                             block.setdefault('amount', "")
                             block.setdefault('data', "")
                             block.setdefault('fee', "")
-                            # Convert list to JSON string if necessary
-                            if isinstance(block['data'], list):
-                                block['data'] = json.dumps(block['data'])
+                            
+                            # Insert each block
                             await db.execute('''
                                 INSERT INTO blockchain (
                                     idx, timestamp, nonce, difficulty, validation_time, size, previous_hash,
@@ -205,8 +212,22 @@ async def sync_blockchain(websocket):
                             ''', (
                                 block['index'], block['timestamp'], block['nonce'], block['difficulty'],
                                 block['validation_time'], block['size'], block['previous_hash'], block['hash'],
-                                block['txid'], block['sender'], block['receiver'], block['amount'], block['data'], block['fee']
+                                block['txid'], block['sender'], block['receiver'], block['amount'], json.dumps(block['data']), block['fee']
                             ))
+
+                            # Insert transactions into tx_index
+                            if isinstance(block['data'], list):
+                                for tx in block['data']:
+                                    if 'txid' in tx:
+                                        await db.execute('''
+                                            INSERT OR REPLACE INTO tx_index (txid, block_index) VALUES (?, ?)
+                                        ''', (tx['txid'], block['index']))
+                            else:
+                                if block['txid']:
+                                    await db.execute('''
+                                        INSERT OR REPLACE INTO tx_index (txid, block_index) VALUES (?, ?)
+                                    ''', (block['txid'], block['index']))
+                                    
                         await db.commit()
                     has_data_to_sync = True
                     print(green(f"Received chunk {response_data['chunk_index'] + 1} of {response_data['total_chunks']}"))

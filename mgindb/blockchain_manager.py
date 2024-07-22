@@ -186,6 +186,8 @@ class BlockchainManager:
             'data': 'Genesis Block',
             'fee': '0'
         }
+        txid = await self.hash_data(genesis_block)
+        genesis_block['txid'] = txid
         genesis_block['hash'] = await self.calculate_hash(genesis_block)
         self.app_state.blockchain.append(genesis_block)
         self.app_state.blockchain_has_changed = True
@@ -222,13 +224,13 @@ class BlockchainManager:
         block['validation_time'] = time.time() - start_time  # Record the time taken to mine the block
         return block
 
-    def hash_data(self, data):
+    async def hash_data(self, data):
         """Hash the data using SHA-256."""
         data_string = ujson.dumps(data, sort_keys=True).encode()
         return hashlib.sha256(data_string).hexdigest()
 
 
-    async def add_block(self, block_data):
+    async def add_to_block(self, block_data):
         from .scheduler import SchedulerManager  # Scheduler management
         self.scheduler_manager = SchedulerManager()  # Manages the scheduler
 
@@ -305,7 +307,7 @@ class BlockchainManager:
             sender_wallet = self.app_state.wallets.get(txn['sender'])
             receiver_wallet = self.app_state.wallets.get(txn['receiver'])
             validator_address = txn['validator']
-            tx_data = f"{block['txid']}:{txn['hash']}"
+            tx_data = f"{txn['txid']}:{block['index']}"
 
             if sender_wallet:
                 sender_wallet['balance'] = str(int(sender_wallet['balance']) - int(txn['amount']) - int(txn['fee']))
@@ -424,8 +426,8 @@ class BlockchainManager:
             'fee': fee
         }
 
-        txid = self.hash_data(transaction)
-        transaction['txid'] = txid
+        txid = await self.hash_data(transaction)
+        transaction['txid'] = str(txid)
         transaction['difficulty'] = self.app_state.config_store['BLOCKCHAIN_CONF']['difficulty']
         self.app_state.pending_transactions.append(transaction)
 
@@ -554,3 +556,28 @@ class BlockchainManager:
         }
 
         return wallet_data
+    
+    async def get_wallet_balance(self, *args, **kwargs):
+        # Extract address from args
+        address = None
+        if args:
+            for arg in args:
+                if isinstance(arg, str):
+                    address = arg
+                    break
+        
+        if not address:
+            return "No valid address found in args"
+
+        encrypted_wallet_data = self.app_state.wallets.get(address)
+        if not encrypted_wallet_data:
+            return "Wallet not found"
+
+        wallet_data = {
+            "balance": encrypted_wallet_data.get("balance"),
+        }
+
+        return wallet_data
+    
+    async def get_tx(self, *args, **kwargs):
+        pass

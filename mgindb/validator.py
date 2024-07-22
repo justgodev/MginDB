@@ -95,10 +95,10 @@ async def process_transaction(websocket, transaction, validator_address, cache):
     mined_block = await mine_block(new_block, new_block['difficulty'])
 
     try:
-        await websocket.send(f"BLOCK {ujson.dumps(mined_block)}")
+        await websocket.send(f"ADD_TO_BLOCK {ujson.dumps(mined_block)}")
     except websockets.ConnectionClosed:
         print(red("Connection closed, caching the transaction"))
-        cache.append(f"BLOCK {ujson.dumps(mined_block)}")
+        cache.append(f"ADD_TO_BLOCK {ujson.dumps(mined_block)}")
 
 async def calculate_hash(block):
     block_string = ujson.dumps(block, sort_keys=True).encode()
@@ -132,8 +132,9 @@ async def handle_message(websocket, message, validator_address, cache):
             print(red(message))
             print()
 
-async def sync_blockchain(websocket, blockchain):
-    blockchain_file = 'blockchain.json'
+async def sync_blockchain(websocket, blockchain, tx_index):
+    blockchain_file = 'data/blockchain.json'
+    tx_index_file = 'data/tx_index.json'
     if os.path.exists(blockchain_file):
         with open(blockchain_file, 'r') as f:
             existing_blocks = json.load(f)
@@ -160,21 +161,31 @@ async def sync_blockchain(websocket, blockchain):
                 new_blocks = response_data["data"]
                 if isinstance(new_blocks, list) and new_blocks:
                     blockchain.extend(new_blocks)
+                    for block in new_blocks:
+                        if 'data' in block and isinstance(block['data'], list):
+                            for tx in block['data']:
+                                if 'txid' in tx:
+                                    tx_index[tx['txid']] = block['index']
+                        else:
+                            if 'txid' in block:
+                                tx_index[block['txid']] = block['index']
                     with open(blockchain_file, 'w') as f:
                         json.dump(blockchain, f, indent=4)
+                    with open(tx_index_file, 'w') as f:
+                        json.dump(tx_index, f, indent=4)
                     has_data_to_sync = True
                 print(green(f"Received chunk {response_data['chunk_index'] + 1} of {response_data['total_chunks']}"))
     except Exception as e:
         print(red(f"Failed to sync blockchain: {e}"))
 
-async def handle_websocket(uri, username, password, validator_address, cache, blockchain):
+async def handle_websocket(uri, username, password, validator_address, cache, blockchain, tx_index):
     while True:
         try:
             async with websockets.connect(uri) as websocket:
                 response_data = await authenticate(websocket, username, password)
                 if response_data and response_data.get("status") == "OK":
                     print(yellow("Performing blockchain sync..."))
-                    await sync_blockchain(websocket, blockchain)
+                    await sync_blockchain(websocket, blockchain, tx_index)
                     print(yellow("Monitoring for pending transactions..."))
                     print()
                     await websocket.send("SUB NODE")
@@ -202,7 +213,7 @@ async def handle_websocket(uri, username, password, validator_address, cache, bl
                         # Periodic sync and save
                         current_time = time.time()
                         if current_time - last_sync_time >= 60:
-                            await sync_blockchain(websocket, blockchain)
+                            await sync_blockchain(websocket, blockchain, tx_index)
                             last_sync_time = current_time
         except asyncio.CancelledError:
             print(red("WebSocket connection cancelled. Cleaning up..."))
@@ -216,11 +227,18 @@ async def main(stop_event, validator_address):
     username = ""  # Replace with your actual username
     password = ""  # Replace with your actual password
 
-    # Initialize cache and in-memory blockchain
+    # Initialize cache and in-memory blockchain and tx_index
     cache = deque()
     blockchain = []
+    tx_index = {}
 
-    consumer_task = asyncio.create_task(handle_websocket(uri, username, password, validator_address, cache, blockchain))
+    # Load tx_index from file if it exists
+    tx_index_file = 'data/tx_index.json'
+    if os.path.exists(tx_index_file):
+        with open(tx_index_file, 'r') as f:
+            tx_index.update(json.load(f))
+
+    consumer_task = asyncio.create_task(handle_websocket(uri, username, password, validator_address, cache, blockchain, tx_index))
 
     # Wait until stop_event is set
     await stop_event.wait()
