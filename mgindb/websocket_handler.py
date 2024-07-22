@@ -73,13 +73,12 @@ class WebSocketSession:
     async def listen_for_messages(self):
         """Listen for messages from the WebSocket and process commands."""
         async for message in self.websocket:
-            response = await self.command_processor.process_command(message, self.sid)
+            response = await self.command_processor.process_command(message, self.sid, self.websocket)
             response = ujson.dumps(response) if isinstance(response, dict) else str(response)
             await self.websocket.send(response)
 
     async def clean_up(self):
         """Clean up the session and remove subscriptions."""
-        # Retrieve subscribed keys before removing the session
         session = self.app_state.sessions.pop(self.sid, None)
         if session:
             subscribed_keys = session.get('subscribed_keys', set())

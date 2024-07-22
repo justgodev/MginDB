@@ -26,7 +26,8 @@ setup(
         'base58',
         'aiofiles',
         'qrcode',
-        'pyotp'
+        'pyotp',
+        'aiosqlite'
     ],
     entry_points={
         'console_scripts': [

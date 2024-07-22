@@ -112,7 +112,7 @@ class Notifier:
         for sid in subscribers:
             await self.send_websocket_message(sid, message)
 
-    async def notify_nodes(self, transaction):
+    async def notify_nodes(self, type, data):
         """
         Notify node subscribers with the transaction data in a round-robin manner.
 
@@ -120,7 +120,7 @@ class Notifier:
             transaction (dict): The transaction data to send.
         """
         message = ujson.dumps({
-            "transaction": transaction
+            type: data
         })
 
         node_subscribers = list(self.app_state.node_subscribers)
@@ -215,11 +215,11 @@ class SubPubManager:
         """
         await self.notifier.notify_subscribers(key, data)
 
-    async def notify_nodes(self, transaction):
+    async def notify_nodes(self, type, data):
         """
         Notify all node subscribers with the transaction data.
 
         Args:
             transaction (dict): The transaction data to send.
         """
-        await self.notifier.notify_nodes(transaction)
+        await self.notifier.notify_nodes(type, data)

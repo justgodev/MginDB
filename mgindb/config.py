@@ -51,8 +51,9 @@ def get_default_config():
         "BLOCKCHAIN_MAX_SUPPLY": "",  # Blockchain max supply
         "BLOCKCHAIN_SETUP_FEE": "",  # Blockchain setup fee
         "BLOCKCHAIN_VALIDATOR_REWARD": "",  # Blockchain validator reward
-        "BLOCKCHAIN_TX_PER_BLOCK": "",  # Blockchain tx per block
-        "BLOCKCHAIN_DATA": {}  # Blockchain conf
+        "BLOCKCHAIN_SYNC_CHUNKS": "100",  # Blockchain sync chunks
+        "BLOCKCHAIN_TX_PER_BLOCK": "100",  # Blockchain tx per block
+        "BLOCKCHAIN_CONF": {}  # Blockchain conf
     }
 
 def load_config():

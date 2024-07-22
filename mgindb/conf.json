@@ -29,12 +29,13 @@
     "BLOCKCHAIN_MAX_SUPPLY": "400000000000000000",
     "BLOCKCHAIN_SETUP_FEE": "100000000",
     "BLOCKCHAIN_VALIDATOR_REWARD": "100000000",
+    "BLOCKCHAIN_SYNC_CHUNKS": "100",
     "BLOCKCHAIN_TX_PER_BLOCK": "10",
-    "BLOCKCHAIN_DATA": {
-        "genesis_address": "MtNAoKNMJG5SSeEWdqag5dgWxJLUgbbGm8",
+    "BLOCKCHAIN_CONF": {
+        "genesis_address": "MrnJsqWVfbXegXcVmHLyjHXA3UxPhDH1wd",
         "chain_length": 1,
-        "previous_hash": "244aad8138aa29a83659bf822c6d3a49f4cf4191eb11a91157b2d005901fe5e0",
-        "latest_block": 1721509579,
+        "previous_hash": "ebb1c0edb0661412e9e27c569d190805639c3d3e3f273aea967bc3f6a3dd0cd4",
+        "latest_block": 1721598864,
         "validation_time": 0,
         "difficulty": 1,
         "fee": "100000000"

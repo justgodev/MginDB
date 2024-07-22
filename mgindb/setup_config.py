@@ -31,8 +31,9 @@ config = {
     "BLOCKCHAIN_MAX_SUPPLY": "",  # Blockchain max supply
     "BLOCKCHAIN_SETUP_FEE": "",  # Blockchain setup fee
     "BLOCKCHAIN_VALIDATOR_REWARD": "",  # Blockchain validator reward
-    "BLOCKCHAIN_TX_PER_BLOCK": "10",  # Blockchain tx per block
-    "BLOCKCHAIN_DATA": {}  # Blockchain conf
+    "BLOCKCHAIN_TX_PER_BLOCK": "100",  # Blockchain tx per block
+    "BLOCKCHAIN_SYNC_CHUNKS": "100",  # Blockchain sync chunks
+    "BLOCKCHAIN_CONF": {}  # Blockchain conf
 }
 
 # Write the configuration to a JSON file

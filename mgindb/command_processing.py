@@ -25,54 +25,42 @@ class CommandProcessor:
         self.thread_executor = thread_executor
         self.process_executor = process_executor
         # Initialize other managers and handlers
-        self.updater = UpdateManager()  # Manages updates
-        self.scheduler_manager = SchedulerManager()  # Manages the scheduler
-        self.sharding_manager = ShardingManager()  # Manages sharding
-        self.blockchain_manager = BlockchainManager()  # Manages blockchain
-        self.data_manager = DataManager()  # Manages data
-        self.indices_manager = IndicesManager()  # Manages indices
-        self.backup_manager = BackupManager()  # Manages backups
-        self.sub_pub_manager = SubPubManager()  # Manages publish/subscribe functionality
-        self.command_utils_manager = CommandUtilsManager()  # Utility functions for commands
-        self.replication_manager = ReplicationManager()  # Manages replication
-        self.config_handler = ConfigCommandHandler(self)  # Handles configuration commands
-        self.data_handler = DataCommandHandler(self)  # Handles data commands
-        self.query_handler = QueryCommandHandler(self)  # Handles query commands
-        self.shard_handler = ShardCommandHandler(self)  # Handles shard commands
-        self.cache_handler = CacheManager()  # Handles cache commands
-        self.upload_manager = UploadManager()  # Handles upload commands
-        self.two_factor_manager = TwoFactorManager()  # Handles two factor commands
+        self.updater = UpdateManager()
+        self.scheduler_manager = SchedulerManager()
+        self.sharding_manager = ShardingManager()
+        self.blockchain_manager = BlockchainManager()
+        self.data_manager = DataManager()
+        self.indices_manager = IndicesManager()
+        self.backup_manager = BackupManager()
+        self.sub_pub_manager = SubPubManager()
+        self.command_utils_manager = CommandUtilsManager()
+        self.replication_manager = ReplicationManager()
+        self.config_handler = ConfigCommandHandler(self)
+        self.data_handler = DataCommandHandler(self)
+        self.query_handler = QueryCommandHandler(self)
+        self.shard_handler = ShardCommandHandler(self)
+        self.cache_handler = CacheManager()
+        self.upload_manager = UploadManager()
+        self.two_factor_manager = TwoFactorManager()
 
     async def run_in_executor(self, executor_type, func, *args):
-        """
-        Run a blocking function in a separate thread or process.
-
-        This helper function allows running blocking functions in a separate thread
-        or process to prevent blocking the asyncio event loop.
-
-        executor_type: 'thread' or 'process'
-        """
         loop = asyncio.get_running_loop()
         executor = self.thread_executor if executor_type == 'thread' else self.process_executor
-        #print(f"Running {func.__name__} in {'thread' if executor_type == 'thread' else 'process'} executor with args: {args}")
         start_time = time.time()
         result = await loop.run_in_executor(executor, func, *args)
         end_time = time.time()
-        #print(f"Completed {func.__name__} in {end_time - start_time:.4f} seconds")
         return result
 
-    async def process_command(self, command_line, sid=False):
-        """Processes a command line input."""
+    async def process_command(self, command_line, sid=False, websocket=None):
         command, args = self.parse_command_line(command_line)
         if command:
             await self.notify_if_sid(sid, command_line)
-            result = await self.execute_command(command, args, sid)
+            result = await self.execute_command(command, args, sid, websocket)
             return await self.handle_result(result)
         else:
             return "ERROR: Invalid command"
 
     def parse_command_line(self, command_line):
-        """Parses the command line input into command and arguments."""
         command_line = command_line.replace('-f', '')
         tokens = command_line.split(maxsplit=1)
         command = tokens[0].upper()
@@ -80,12 +68,10 @@ class CommandProcessor:
         return command, args
 
     async def notify_if_sid(self, sid, command_line):
-        """Notifies subscribers if sid is provided."""
         if sid:
             await self.sub_pub_manager.notify_monitors(command_line, sid)
 
-    async def execute_command(self, command, args, sid):
-        """Executes the command based on the provided command and arguments."""
+    async def execute_command(self, command, args, sid, websocket):
         commands = {
             'CHECKUPDATE': self.updater.check_update,
             'CONFIG': self.config_handler.handle_command,
@@ -109,6 +95,7 @@ class CommandProcessor:
             'REPLICATE': self.shard_handler.replicate_command,
             'RESHARD': self.shard_handler.reshard_command,
             'ROLLBACK': self.backup_manager.backup_rollback,
+            'BLOCKCHAIN': self.blockchain_manager.get_blockchain,
             'NEW_WALLET': self.blockchain_manager.new_wallet,
             'GET_WALLET': self.blockchain_manager.get_wallet,
             'BLOCK': self.blockchain_manager.add_block,
@@ -121,7 +108,6 @@ class CommandProcessor:
         if command in commands:
             func = commands[command]
             if asyncio.iscoroutinefunction(func):
-                #print(f"Command {command} is a coroutine function with args: {args}")
                 if command == 'UPLOAD_FILE':
                     key, data = args.split(' ', 1)
                     return await func(key, data.encode())
@@ -137,10 +123,14 @@ class CommandProcessor:
                 elif command == 'VERIFY_2FA':
                     secret, code = args.split(' ')
                     return await func(secret, code)
+                elif command == 'BLOCKCHAIN':
+                    async_gen = await func(args)
+                    async for chunk in async_gen:
+                        await websocket.send(chunk)
+                    return None
                 else:
                     return await func(args)
             else:
-                #print(f"Command {command} is a blocking function, running in executor with args: {args}")
                 if command == 'UPLOAD_FILE':
                     key, data = args.split(' ', 1)
                     return await self.run_in_executor('thread', func, key, data.encode())
@@ -158,6 +148,7 @@ class CommandProcessor:
                     return await self.run_in_executor('thread', func, args)
         else:
             return None
+
 
     async def handle_result(self, result):
         """Handles the result of a command execution."""

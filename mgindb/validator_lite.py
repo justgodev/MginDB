@@ -6,10 +6,11 @@ import hashlib
 import signal
 import os
 import json
-from collections import deque
+from collections import deque  # For the cache
+import aiosqlite
 
 # List of required packages
-required_packages = ['websockets', 'ujson']
+required_packages = ['websockets', 'ujson', 'aiosqlite']
 
 def install_package(package):
     """Install a package using pip."""
@@ -132,19 +133,43 @@ async def handle_message(websocket, message, validator_address, cache):
             print(red(message))
             print()
 
-async def sync_blockchain(websocket, blockchain):
-    blockchain_file = 'blockchain.json'
-    if os.path.exists(blockchain_file):
-        with open(blockchain_file, 'r') as f:
-            existing_blocks = json.load(f)
-            blockchain.clear()
-            blockchain.extend(existing_blocks)
-            last_index = existing_blocks[-1]['index'] if existing_blocks else 0
-            sync_command = f"BLOCKCHAIN FROM {last_index + 1}"
-            await websocket.send(sync_command)
-    else:
-        sync_command = "BLOCKCHAIN FULL"
-        await websocket.send(sync_command)
+async def initialize_database():
+    async with aiosqlite.connect('blockchain.db') as db:
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS blockchain (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                idx INTEGER,
+                timestamp INTEGER,
+                nonce INTEGER,
+                difficulty INTEGER,
+                validation_time REAL,
+                size INTEGER,
+                previous_hash TEXT,
+                hash TEXT,
+                txid TEXT,
+                sender TEXT,
+                receiver TEXT,
+                amount TEXT,
+                data TEXT,
+                fee TEXT
+            )
+        ''')
+        # Create indices for faster retrieval
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_index ON blockchain (idx)')
+        await db.execute('CREATE INDEX IF NOT EXISTS hash_index ON blockchain (hash)')
+        await db.execute('CREATE INDEX IF NOT EXISTS txid_index ON blockchain (txid)')
+        await db.execute('CREATE INDEX IF NOT EXISTS sender_index ON blockchain (sender)')
+        await db.execute('CREATE INDEX IF NOT EXISTS receiver_index ON blockchain (receiver)')
+        await db.commit()
+
+async def sync_blockchain(websocket):
+    async with aiosqlite.connect('blockchain.db') as db:
+        async with db.execute('SELECT idx FROM blockchain ORDER BY idx DESC LIMIT 1') as cursor:
+            last_row = await cursor.fetchone()
+            last_index = last_row[0] if last_row else 0
+
+    sync_command = f"BLOCKCHAIN FROM {last_index + 1}" if last_index > 0 else "BLOCKCHAIN FULL"
+    await websocket.send(sync_command)
     
     try:
         has_data_to_sync = False
@@ -159,22 +184,43 @@ async def sync_blockchain(websocket, blockchain):
             elif isinstance(response_data, dict) and 'data' in response_data:
                 new_blocks = response_data["data"]
                 if isinstance(new_blocks, list) and new_blocks:
-                    blockchain.extend(new_blocks)
-                    with open(blockchain_file, 'w') as f:
-                        json.dump(blockchain, f, indent=4)
+                    async with aiosqlite.connect('blockchain.db') as db:
+                        for block in new_blocks:
+                            # Ensure all expected fields are present, adding default values if necessary
+                            block.setdefault('previous_hash', "")
+                            block.setdefault('txid', "")
+                            block.setdefault('sender', "")
+                            block.setdefault('receiver', "")
+                            block.setdefault('amount', "")
+                            block.setdefault('data', "")
+                            block.setdefault('fee', "")
+                            # Convert list to JSON string if necessary
+                            if isinstance(block['data'], list):
+                                block['data'] = json.dumps(block['data'])
+                            await db.execute('''
+                                INSERT INTO blockchain (
+                                    idx, timestamp, nonce, difficulty, validation_time, size, previous_hash,
+                                    hash, txid, sender, receiver, amount, data, fee
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ''', (
+                                block['index'], block['timestamp'], block['nonce'], block['difficulty'],
+                                block['validation_time'], block['size'], block['previous_hash'], block['hash'],
+                                block['txid'], block['sender'], block['receiver'], block['amount'], block['data'], block['fee']
+                            ))
+                        await db.commit()
                     has_data_to_sync = True
-                print(green(f"Received chunk {response_data['chunk_index'] + 1} of {response_data['total_chunks']}"))
+                    print(green(f"Received chunk {response_data['chunk_index'] + 1} of {response_data['total_chunks']}"))
     except Exception as e:
         print(red(f"Failed to sync blockchain: {e}"))
 
-async def handle_websocket(uri, username, password, validator_address, cache, blockchain):
+async def handle_websocket(uri, username, password, validator_address, cache):
     while True:
         try:
             async with websockets.connect(uri) as websocket:
                 response_data = await authenticate(websocket, username, password)
                 if response_data and response_data.get("status") == "OK":
                     print(yellow("Performing blockchain sync..."))
-                    await sync_blockchain(websocket, blockchain)
+                    await sync_blockchain(websocket)
                     print(yellow("Monitoring for pending transactions..."))
                     print()
                     await websocket.send("SUB NODE")
@@ -202,7 +248,7 @@ async def handle_websocket(uri, username, password, validator_address, cache, bl
                         # Periodic sync and save
                         current_time = time.time()
                         if current_time - last_sync_time >= 60:
-                            await sync_blockchain(websocket, blockchain)
+                            await sync_blockchain(websocket)
                             last_sync_time = current_time
         except asyncio.CancelledError:
             print(red("WebSocket connection cancelled. Cleaning up..."))
@@ -216,11 +262,13 @@ async def main(stop_event, validator_address):
     username = ""  # Replace with your actual username
     password = ""  # Replace with your actual password
 
-    # Initialize cache and in-memory blockchain
+    # Initialize cache
     cache = deque()
-    blockchain = []
 
-    consumer_task = asyncio.create_task(handle_websocket(uri, username, password, validator_address, cache, blockchain))
+    # Initialize the database
+    await initialize_database()
+
+    consumer_task = asyncio.create_task(handle_websocket(uri, username, password, validator_address, cache))
 
     # Wait until stop_event is set
     await stop_event.wait()
