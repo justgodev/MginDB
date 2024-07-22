@@ -62,6 +62,7 @@ async def authenticate(websocket, username, password):
     response = await websocket.recv()
     if response:
         if "MginDB server connected... Welcome!" in response:
+            print()
             print(green("AUTHENTICATION SUCCESSFUL"))
             print()
             return {"status": "OK"}
@@ -304,6 +305,12 @@ def shutdown(loop, stop_event):
     stop_event.set()  # Signal the event to stop the loop
 
 def run():
+    print(cyan('################################################################'))
+    print()
+    print(cyan('               MginDB Node - version 1.0'))
+    print()
+    print(cyan('################################################################'))
+    print()
     validator_address = ""
     while not validator_address.strip():
         validator_address = input("Please enter your validator wallet address: ").strip()

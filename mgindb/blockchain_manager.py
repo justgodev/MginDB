@@ -2,6 +2,7 @@ import ujson  # Module for JSON operations
 import asyncio
 import os  # Module for interacting with the operating system
 import time  # Module for time-related functions
+import uuid  # Module for uuid
 import hashlib  # Module for cryptographic hash functions
 from mnemonic import Mnemonic
 from ecdsa import SigningKey, SECP256k1
@@ -580,4 +581,41 @@ class BlockchainManager:
         return wallet_data
     
     async def get_tx(self, *args, **kwargs):
-        pass
+        # Extract data from args
+        data = None
+        if args:
+            for arg in args:
+                if isinstance(arg, str):
+                    data = arg
+                    break
+        
+        if not data:
+            return "Not a valid txid or hash"
+
+        # Generate a unique request_id
+        request_id = str(uuid.uuid4())
+
+        # Store the request_id in app_state.blockchain_tx_requests with empty data
+        self.app_state.blockchain_tx_requests[request_id] = None
+
+        # Notify nodes passing the request_id
+        await self.sub_pub_manager.notify_nodes('get', {'data': data, 'request_id': request_id})
+
+        # Wait for resolve_tx to return the result for the request_id
+        result = await self.resolve_tx(request_id)
+
+        # Remove the request entry from app_state.blockchain_tx_requests
+        self.app_state.blockchain_tx_requests.pop(request_id, None)
+
+        return result
+
+    async def resolve_tx(self, request_id):
+        while True:
+            if request_id in self.app_state.blockchain_tx_requests and self.app_state.blockchain_tx_requests[request_id] is not None:
+                return self.app_state.blockchain_tx_requests[request_id]
+            await asyncio.sleep(0.1)  # Polling interval
+
+    async def submit_tx_result(self, request_id, result):
+        # Update the request data in app_state.blockchain_tx_requests
+        if request_id in self.app_state.blockchain_tx_requests:
+            self.app_state.blockchain_tx_requests[request_id] = result

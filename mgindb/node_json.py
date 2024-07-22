@@ -61,6 +61,7 @@ async def authenticate(websocket, username, password):
     response = await websocket.recv()
     if response:
         if "MginDB server connected... Welcome!" in response:
+            print()
             print(green("AUTHENTICATION SUCCESSFUL"))
             print()
             return {"status": "OK"}
@@ -135,6 +136,10 @@ async def handle_message(websocket, message, validator_address, cache):
 async def sync_blockchain(websocket, blockchain, tx_index):
     blockchain_file = 'data/blockchain.json'
     tx_index_file = 'data/tx_index.json'
+    
+    # Ensure the 'data' directory exists
+    os.makedirs('data', exist_ok=True)
+    
     if os.path.exists(blockchain_file):
         with open(blockchain_file, 'r') as f:
             existing_blocks = json.load(f)
@@ -232,6 +237,9 @@ async def main(stop_event, validator_address):
     blockchain = []
     tx_index = {}
 
+    # Ensure the 'data' directory exists
+    os.makedirs('data', exist_ok=True)
+
     # Load tx_index from file if it exists
     tx_index_file = 'data/tx_index.json'
     if os.path.exists(tx_index_file):
@@ -253,6 +261,12 @@ def shutdown(loop, stop_event):
     stop_event.set()  # Signal the event to stop the loop
 
 def run():
+    print(cyan('################################################################'))
+    print()
+    print(cyan('               MginDB Node - version 1.0'))
+    print()
+    print(cyan('################################################################'))
+    print()
     validator_address = ""
     while not validator_address.strip():
         validator_address = input("Please enter your validator wallet address: ").strip()

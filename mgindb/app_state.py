@@ -37,6 +37,9 @@ class AppState:
             cls.data_store_cache_keys_expiration = {}
             cls.data_store_key_command_mapping = {}
 
+            # Blockchain requests
+            cls.blockchain_tx_requests = {}
+
             # Changes tracking
             cls.data_has_changed = False  # Flag to track data changes
             cls.indices_has_changed = False  # Flag to track indices changes
