@@ -38,7 +38,7 @@ class AppState:
             cls.data_store_key_command_mapping = {}
 
             # Blockchain requests
-            cls.blockchain_tx_requests = {}
+            cls.blockchain_txns_requests = {}
 
             # Changes tracking
             cls.data_has_changed = False  # Flag to track data changes

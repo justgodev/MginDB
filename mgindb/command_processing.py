@@ -99,9 +99,11 @@ class CommandProcessor:
             'NEW_WALLET': self.blockchain_manager.new_wallet,
             'GET_WALLET': self.blockchain_manager.get_wallet,
             'GET_WALLET_BALANCE': self.blockchain_manager.get_wallet_balance,
-            'GET_TX': self.blockchain_manager.get_tx,
-            'RESOLVE_TX': self.blockchain_manager.resolve_tx,
-            'SUBMIT_TX_RESULT': self.blockchain_manager.submit_tx_result,
+            'GET_TXN': self.blockchain_manager.get_txn,
+            'GET_TXNS': self.blockchain_manager.get_txns,
+            'GET_BLOCKS': self.blockchain_manager.get_blocks,
+            'RESOLVE_TXNS': self.blockchain_manager.resolve_txns,
+            'SUBMIT_TXNS_RESULT': self.blockchain_manager.submit_txns_result,
             'ADD_TO_BLOCK': self.blockchain_manager.add_to_block,
             'UPLOAD_FILE': self.upload_manager.save_file,
             'READ_FILE': self.upload_manager.read_file,
@@ -132,9 +134,21 @@ class CommandProcessor:
                     async for chunk in async_gen:
                         await websocket.send(chunk)
                     return None
-                elif command == 'SUBMIT_TX_RESULT':
+                elif command == 'SUBMIT_TXNS_RESULT':
                     request_id, result = args.split(' ', 1)
                     return await func(request_id, result)
+                elif command == 'GET_BLOCKS':
+                    options = {}
+                    if 'LATEST' in args:
+                        latest_value = args.split('LATEST')[1].strip().split()[0].strip('()')
+                        options['latest'] = latest_value.lower() == 'true'
+                    if 'LIMIT' in args:
+                        limit_value = args.split('LIMIT')[1].strip().split()[0].strip('()')
+                        options['limit'] = limit_value
+                    if 'ORDERBY' in args:
+                        order_value = args.split('ORDERBY')[1].strip().split()[0].strip('()')
+                        options['order'] = order_value
+                    return await func(options)
                 else:
                     return await func(args)
             else:
@@ -151,9 +165,21 @@ class CommandProcessor:
                 elif command == 'VERIFY_2FA':
                     secret, code = args.split(' ')
                     return await self.run_in_executor('thread', func, secret, code)
-                elif command == 'SUBMIT_TX_RESULT':
+                elif command == 'SUBMIT_TXNS_RESULT':
                     request_id, result = args.split(' ', 1)
                     return await self.run_in_executor('thread', func, request_id, result)
+                elif command == 'GET_BLOCKS':
+                    options = {}
+                    if 'LATEST' in args:
+                        latest_value = args.split('LATEST')[1].strip().split()[0].strip('()')
+                        options['latest'] = latest_value.lower() == 'true'
+                    if 'LIMIT' in args:
+                        limit_value = args.split('LIMIT')[1].strip().split()[0].strip('()')
+                        options['limit'] = limit_value
+                    if 'ORDER' in args:
+                        order_value = args.split('ORDER')[1].strip().split()[0].strip('()')
+                        options['order'] = order_value
+                    return await self.run_in_executor('thread', func, options)
                 else:
                     return await self.run_in_executor('thread', func, args)
         else:

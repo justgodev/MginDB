@@ -579,8 +579,90 @@ class BlockchainManager:
         }
 
         return wallet_data
-    
-    async def get_tx(self, *args, **kwargs):
+
+    async def get_blocks(self, options):
+        order_by = 'DESC'
+        latest = False
+        limit_start = 0
+        limit_end = None
+
+        if 'order' in options:
+            order_by = options['order']
+        if 'latest' in options and options['latest']:
+            latest = options['latest']
+        if 'limit' in options:
+            limits = options['limit'].split(',')
+            if len(limits) == 2:
+                limit_start = int(limits[0])
+                limit_end = int(limits[1])
+
+        # Generate a unique request_id
+        request_id = str(uuid.uuid4())
+
+        # Store the request_id in app_state.blockchain_txns_requests with empty data
+        self.app_state.blockchain_txns_requests[request_id] = None
+
+        # Prepare the data to be sent to nodes
+        data = {
+            'order_by': order_by,
+            'latest': latest,
+            'limit_start': limit_start,
+            'limit_end': limit_end
+        }
+
+        # Notify nodes passing the request_id and data
+        await self.sub_pub_manager.notify_nodes('get_blocks', {'data': data, 'request_id': request_id, 'options': options})
+
+        # Wait for resolve_txns to return the result for the request_id
+        result = await self.resolve_txns(request_id)
+
+        # Remove the request entry from app_state.blockchain_txns_requests
+        self.app_state.blockchain_txns_requests.pop(request_id, None)
+
+        return result
+
+    async def get_txns(self, options):
+        order_by = 'DESC'
+        latest = False
+        limit_start = 0
+        limit_end = None
+
+        if 'order' in options:
+            order_by = options['order']
+        if 'latest' in options and options['latest']:
+            latest = options['latest']
+        if 'limit' in options:
+            limits = options['limit'].split(',')
+            if len(limits) == 2:
+                limit_start = int(limits[0])
+                limit_end = int(limits[1])
+
+        # Generate a unique request_id
+        request_id = str(uuid.uuid4())
+
+        # Store the request_id in app_state.blockchain_txns_requests with empty data
+        self.app_state.blockchain_txns_requests[request_id] = None
+
+        # Prepare the data to be sent to nodes
+        data = {
+            'order_by': order_by,
+            'latest': latest,
+            'limit_start': limit_start,
+            'limit_end': limit_end
+        }
+
+        # Notify nodes passing the request_id and data
+        await self.sub_pub_manager.notify_nodes('get_txns', {'data': data, 'request_id': request_id, 'options': options})
+
+        # Wait for resolve_txns to return the result for the request_id
+        result = await self.resolve_txns(request_id)
+
+        # Remove the request entry from app_state.blockchain_txns_requests
+        self.app_state.blockchain_txns_requests.pop(request_id, None)
+
+        return result
+
+    async def get_txn(self, *args, **kwargs):
         # Extract data from args
         data = None
         if args:
@@ -595,27 +677,27 @@ class BlockchainManager:
         # Generate a unique request_id
         request_id = str(uuid.uuid4())
 
-        # Store the request_id in app_state.blockchain_tx_requests with empty data
-        self.app_state.blockchain_tx_requests[request_id] = None
+        # Store the request_id in app_state.blockchain_txns_requests with empty data
+        self.app_state.blockchain_txns_requests[request_id] = None
 
         # Notify nodes passing the request_id
-        await self.sub_pub_manager.notify_nodes('get', {'data': data, 'request_id': request_id})
+        await self.sub_pub_manager.notify_nodes('get_txn', {'data': data, 'request_id': request_id})
 
-        # Wait for resolve_tx to return the result for the request_id
-        result = await self.resolve_tx(request_id)
+        # Wait for resolve_txns to return the result for the request_id
+        result = await self.resolve_txns(request_id)
 
-        # Remove the request entry from app_state.blockchain_tx_requests
-        self.app_state.blockchain_tx_requests.pop(request_id, None)
+        # Remove the request entry from app_state.blockchain_txns_requests
+        self.app_state.blockchain_txns_requests.pop(request_id, None)
 
         return result
 
-    async def resolve_tx(self, request_id):
+    async def resolve_txns(self, request_id):
         while True:
-            if request_id in self.app_state.blockchain_tx_requests and self.app_state.blockchain_tx_requests[request_id] is not None:
-                return self.app_state.blockchain_tx_requests[request_id]
+            if request_id in self.app_state.blockchain_txns_requests and self.app_state.blockchain_txns_requests[request_id] is not None:
+                return self.app_state.blockchain_txns_requests[request_id]
             await asyncio.sleep(0.1)  # Polling interval
 
-    async def submit_tx_result(self, request_id, result):
-        # Update the request data in app_state.blockchain_tx_requests
-        if request_id in self.app_state.blockchain_tx_requests:
-            self.app_state.blockchain_tx_requests[request_id] = result
+    async def submit_txns_result(self, request_id, result):
+        # Update the request data in app_state.blockchain_txns_requests
+        if request_id in self.app_state.blockchain_txns_requests:
+            self.app_state.blockchain_txns_requests[request_id] = str(result)
