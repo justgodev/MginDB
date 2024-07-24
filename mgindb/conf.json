@@ -31,11 +31,12 @@
     "BLOCKCHAIN_VALIDATOR_REWARD": "100000000",
     "BLOCKCHAIN_SYNC_CHUNKS": "100",
     "BLOCKCHAIN_TX_PER_BLOCK": "10",
+    "BLOCKCHAIN_BLOCK_AUTO_CREATION_INTERVAL": "120",
     "BLOCKCHAIN_CONF": {
-        "genesis_address": "MrnJsqWVfbXegXcVmHLyjHXA3UxPhDH1wd",
+        "genesis_address": "MjF4EnYyiLQj4tNpygMUTmezfehgw2diRP",
         "chain_length": 1,
-        "previous_hash": "ebb1c0edb0661412e9e27c569d190805639c3d3e3f273aea967bc3f6a3dd0cd4",
-        "latest_block": 1721598864,
+        "previous_hash": "54b5fc58d3da311c8f5a14e9a859c96363b96eb8ef307469c23380986bdab79f",
+        "latest_block": 1721758861,
         "validation_time": 0,
         "difficulty": 1,
         "fee": "100000000"

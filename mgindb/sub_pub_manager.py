@@ -32,6 +32,8 @@ class Subscriptions:
                 self.app_state.monitor_subscribers.add(sid)
             elif key == "NODE":
                 self.app_state.node_subscribers.add(sid)
+            elif key == "NODE_LITE":
+                self.app_state.node_lite_subscribers.add(sid)
             else:
                 if key not in self.app_state.sub_pub:
                     self.app_state.sub_pub[key] = set()
@@ -55,6 +57,8 @@ class Subscriptions:
                 self.app_state.monitor_subscribers.discard(sid)
             elif key == "NODE":
                 self.app_state.node_subscribers.discard(sid)
+            elif key == "NODE_LITE":
+                self.app_state.node_lite_subscribers.discard(sid)
             elif key in self.app_state.sub_pub and sid in self.app_state.sub_pub[key]:
                 self.app_state.sub_pub[key].remove(sid)
                 if not self.app_state.sub_pub[key]:
@@ -112,25 +116,58 @@ class Notifier:
         for sid in subscribers:
             await self.send_websocket_message(sid, message)
 
-    async def notify_nodes(self, type, data):
+    async def notify_node(self, type, data, node_type='ALL'):
         """
         Notify node subscribers with the transaction data in a round-robin manner.
 
         Args:
-            transaction (dict): The transaction data to send.
+            type (str): The type of data to send.
+            data (dict): The data to send.
+            node_type (str): The type of nodes to notify ('ALL', 'FULL', 'LITE').
         """
         message = ujson.dumps({
             type: data
         })
 
-        node_subscribers = list(self.app_state.node_subscribers)
-        num_nodes = len(node_subscribers)
+        if node_type == 'ALL':
+            node_subscribers = list(self.app_state.node_subscribers.union(self.app_state.node_lite_subscribers))
+        elif node_type == 'FULL':
+            node_subscribers = list(self.app_state.node_subscribers)
+        elif node_type == 'LITE':
+            node_subscribers = list(self.app_state.node_lite_subscribers)
+        else:
+            return
 
+        num_nodes = len(node_subscribers)
         if num_nodes > 0:
-            # Determine the next node to receive the transaction
             self.last_node_index = (self.last_node_index + 1) % num_nodes
             next_node_sid = node_subscribers[self.last_node_index]
             await self.send_websocket_message(next_node_sid, message)
+
+    async def notify_nodes(self, type, data, node_type='ALL'):
+        """
+        Notify all node subscribers with the transaction data.
+
+        Args:
+            type (str): The type of data to send.
+            data (dict): The data to send.
+            node_type (str): The type of nodes to notify ('ALL', 'FULL', 'LITE').
+        """
+        message = ujson.dumps({
+            type: data
+        })
+
+        if node_type == 'ALL':
+            subscribers = self.app_state.node_subscribers.union(self.app_state.node_lite_subscribers)
+        elif node_type == 'FULL':
+            subscribers = self.app_state.node_subscribers
+        elif node_type == 'LITE':
+            subscribers = self.app_state.node_lite_subscribers
+        else:
+            return
+
+        for sid in subscribers:
+            await self.send_websocket_message(sid, message)
 
     async def send_websocket_message(self, sid, message):
         """
@@ -215,11 +252,24 @@ class SubPubManager:
         """
         await self.notifier.notify_subscribers(key, data)
 
-    async def notify_nodes(self, type, data):
+    async def notify_node(self, type, data, node_type='ALL'):
         """
         Notify all node subscribers with the transaction data.
 
         Args:
-            transaction (dict): The transaction data to send.
+            type (str): The type of data to send.
+            data (dict): The data to send.
+            node_type (str): The type of nodes to notify ('ALL', 'FULL', 'LITE').
         """
-        await self.notifier.notify_nodes(type, data)
+        await self.notifier.notify_node(type, data, node_type)
+
+    async def notify_nodes(self, type, data, node_type='ALL'):
+        """
+        Notify all node subscribers with the transaction data.
+
+        Args:
+            type (str): The type of data to send.
+            data (dict): The data to send.
+            node_type (str): The type of nodes to notify ('ALL', 'FULL', 'LITE').
+        """
+        await self.notifier.notify_nodes(type, data, node_type)

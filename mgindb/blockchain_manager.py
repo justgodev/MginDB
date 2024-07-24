@@ -4,13 +4,14 @@ import os  # Module for interacting with the operating system
 import time  # Module for time-related functions
 import uuid  # Module for uuid
 import hashlib  # Module for cryptographic hash functions
+import sqlite3  # Module for SQLite operations
 from mnemonic import Mnemonic
 from ecdsa import SigningKey, SECP256k1
 from cryptography.fernet import Fernet
 import base64
 import base58
 from .app_state import AppState  # Import application state management
-from .constants import BLOCKCHAIN_FILE, PENDING_TRANSACTIONS_FILE, WALLETS_FILE  # Import constant for blockchain and wallets
+from .constants import BLOCKCHAIN_DB, PENDING_TRANSACTIONS_FILE, WALLETS_FILE  # Import constant for blockchain and wallets
 from .config import save_config  # Import config loading and saving
 from .sub_pub_manager import SubPubManager  # Publish/subscribe management
 
@@ -18,78 +19,133 @@ class BlockchainManager:
     def __init__(self):
         """Initialize BlockchainManager with application state and data file path."""
         self.app_state = AppState()
-        self.blockchain_file = BLOCKCHAIN_FILE
+        self.blockchain_db = BLOCKCHAIN_DB
         self.pending_transactions_file = PENDING_TRANSACTIONS_FILE
-        self.wallets_file = WALLETS_FILE
         self.sub_pub_manager = SubPubManager()
+        self.last_block_time = time.time()
         self.tx_per_block = self.app_state.config_store.get('BLOCKCHAIN_TX_PER_BLOCK')
         self.sync_chunks = self.app_state.config_store.get('BLOCKCHAIN_SYNC_CHUNKS')
         self.accumulated_transactions = []  # List to store accumulated transactions
-    
+        self._init_blockchain()
+
+    def _init_blockchain(self):
+        """Initialize the SQLite database."""
+        self.conn = sqlite3.connect(self.blockchain_db)
+        self.cursor = self.conn.cursor()
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS blockchain (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                block_index INTEGER,
+                timestamp INTEGER,
+                nonce INTEGER,
+                difficulty INTEGER,
+                validation_time REAL,
+                size INTEGER,
+                previous_hash TEXT,
+                hash TEXT,
+                data TEXT,
+                fee TEXT
+            )
+        ''')
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS wallets (
+                address TEXT PRIMARY KEY,
+                public_key TEXT,
+                private_key TEXT,
+                words TEXT,
+                balance TEXT,
+                tx_count INTEGER,
+                tx_data TEXT,
+                last_tx_timestamp TEXT,
+                created_at INTEGER
+            )
+        ''')
+        self.conn.commit()
+
     async def has_blockchain(self):
         return self.app_state.config_store.get('BLOCKCHAIN') == '1'
 
-    async def get_blockchain(self, args=None):
+    def get_blockchain(self, args=None):
         """Return the entire blockchain or from a specific index."""
+        
+        # If args are provided and start with 'FROM', filter the blockchain data accordingly
         if args and args.strip().startswith('FROM'):
             _, index = args.split(' ')
             index = int(index)
-            blockchain_data = self.app_state.blockchain[index:].copy()
+            blockchain_data = [block for block in self.app_state.blockchain if block['index'] > index]
         else:
-            blockchain_data = self.app_state.blockchain.copy()
-            
-        chunk_size = int(self.sync_chunks)
-        return self.chunk_data(blockchain_data, chunk_size)
+            blockchain_data = self.app_state.blockchain
 
-    async def chunk_data(self, data, chunk_size):
+        chunks = list(self.chunk_data(blockchain_data))  # Convert generator to list for debug print
+        return chunks
+
+    def chunk_data(self, data):
         """
         Chunk the data into smaller pieces for sending via WebSocket.
         """
-        total_chunks = (len(data) + chunk_size - 1) // chunk_size
-        for i in range(total_chunks):
-            start_index = i * chunk_size
-            end_index = start_index + chunk_size
-            chunk = data[start_index:end_index]
+        total_chunks = len(data)
+        for i, block in enumerate(data):
             yield ujson.dumps({
                 "chunk_index": i,
                 "total_chunks": total_chunks,
-                "data": chunk
+                "data": [block]  # Send one full block per chunk
             })
-            await asyncio.sleep(1)
-        yield ujson.dumps({"end": True})
+        # Yield a separate end chunk as a valid JSON object
+        yield ujson.dumps({"chunk_index": total_chunks, "end": True})
+
+    def format_block(self, row):
+        """
+        Convert a database row into a block format.
+        """
+        block = {
+            'index': row[1],
+            'timestamp': row[2],
+            'nonce': row[3],
+            'difficulty': row[4],
+            'validation_time': row[5],
+            'size': row[6],
+            'previous_hash': row[7],
+            'hash': row[8],
+            'data': ujson.loads(row[9]),
+            'fee': row[10]
+        }
+        return block
 
     async def load_blockchain(self):
         """
-        Load data from the blockchain file into the application state.
-
-        If the data file does not exist, create an empty one. Attempt to load
-        the data from the file and update the application state. Handle JSON
-        decode errors and return an empty dictionary if an error occurs.
+        Load data from the blockchain table into the application state.
         """
-        if not os.path.exists(self.blockchain_file):
-            with open(self.blockchain_file, mode='w', encoding='utf-8') as file:
-                ujson.dump([], file)
-            await self.create_genesis_block()
-        else:
-            try:
-                with open(self.blockchain_file, mode='r', encoding='utf-8') as file:
-                    loaded_blockchain = ujson.load(file)
+        try:
+            with sqlite3.connect(self.blockchain_db) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM blockchain")
+                loaded_blockchain = cursor.fetchall()
                 if not loaded_blockchain:
                     await self.create_genesis_block()
                 else:
-                    self.app_state.blockchain = loaded_blockchain
-            except ujson.JSONDecodeError as e:
-                print(f"Failed to load blockchain: {e}")
-                # Handle the error by initializing the blockchain
-                await self.create_genesis_block()
+                    self.app_state.blockchain = [
+                        {
+                            'index': row[1],
+                            'timestamp': row[2],
+                            'nonce': row[3],
+                            'difficulty': row[4],
+                            'validation_time': row[5],
+                            'size': row[6],
+                            'previous_hash': row[7],
+                            'hash': row[8],
+                            'data': ujson.loads(row[9]),
+                            'fee': row[10]
+                        }
+                        for row in loaded_blockchain
+                    ]
+                    print('LOADED BLOCKCHAIN', self.app_state.blockchain)
+        except sqlite3.Error as e:
+            print(f"Failed to load blockchain: {e}")
+            await self.create_genesis_block()
     
     async def load_blockchain_pending_transactions(self):
         """
         Load data from the pending transactions file into the application state.
-
-        If the data file does not exist, create an empty one. Attempt to load
-        the data from the file and update the application state. Handle JSON
-        decode errors and return an empty dictionary if an error occurs.
         """
         if not os.path.exists(self.pending_transactions_file):
             with open(self.pending_transactions_file, mode='w', encoding='utf-8') as file:
@@ -98,107 +154,146 @@ class BlockchainManager:
             try:
                 with open(self.pending_transactions_file, mode='r', encoding='utf-8') as file:
                     loaded_pending_transactions = ujson.load(file)
-                self.app_state.pending_transactions = loaded_pending_transactions
+                self.app_state.blockchain_pending_transactions = loaded_pending_transactions
             except ujson.JSONDecodeError as e:
                 print(f"Failed to load pending transactions: {e}")
 
     async def load_blockchain_wallets(self):
         """
-        Load data from the wallets file into the application state.
-
-        If the data file does not exist, create an empty one. Attempt to load
-        the data from the file and update the application state. Handle JSON
-        decode errors and return an empty dictionary if an error occurs.
-        """
-        if not os.path.exists(self.wallets_file):
-            with open(self.wallets_file, mode='w', encoding='utf-8') as file:
-                ujson.dump([], file)
-        else:
-            try:
-                with open(self.wallets_file, mode='r', encoding='utf-8') as file:
-                    loaded_wallets = ujson.load(file)
-                self.app_state.wallets = loaded_wallets
-            except ujson.JSONDecodeError as e:
-                print(f"Failed to load wallets: {e}")
-
-    def save_blockchain(self):
-        """
-        Save the current data in the application state to the blockchain file.
-
-        If there have been changes to the data, write the updated data store
-        to the data file and reset the data change flag. Handle I/O errors.
+        Load data from the wallets table into the application state.
         """
         try:
-            if self.app_state.blockchain_has_changed:
-                with open(self.blockchain_file, mode='w', encoding='utf-8') as file:
-                    ujson.dump(self.app_state.blockchain, file, indent=4)
-                    self.app_state.blockchain_has_changed = False
+            with sqlite3.connect(self.blockchain_db) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM wallets")
+                loaded_wallets = cursor.fetchall()
+                if not loaded_wallets:
+                    self.app_state.wallets = {}
+                else:
+                    self.app_state.wallets = {
+                        wallet[0]: {
+                            "public_key": wallet[1],
+                            "private_key": wallet[2],
+                            "words": wallet[3],
+                            "balance": wallet[4],
+                            "tx_count": wallet[5],
+                            "tx_data": ujson.loads(wallet[6]),
+                            "last_tx_timestamp": wallet[7],
+                            "created_at": wallet[8]
+                        } for wallet in loaded_wallets
+                    }
+        except sqlite3.Error as e:
+            print(f"Failed to load wallets: {e}")
+            # Optionally, initialize wallets to an empty state
+            self.app_state.wallets = {}
+
+    async def save_blockchain(self, block):
+        """
+        Save the provided block data to the blockchain table.
+        """
+        try:
+            self.cursor.execute('''
+                INSERT INTO blockchain (block_index, timestamp, nonce, difficulty, validation_time, size, previous_hash, hash, data, fee)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                block['index'],
+                block['timestamp'],
+                block['nonce'],
+                block['difficulty'],
+                block['validation_time'],
+                block['size'],
+                block['previous_hash'],
+                block['hash'],
+                ujson.dumps(block['data']),
+                block['fee']
+            ))
+            self.conn.commit()
         except IOError as e:
             print(f"Failed to save blockchain: {e}")
     
-    def save_blockchain_pending_transactions(self):
+    async def save_blockchain_pending_transactions(self):
         """
         Save the current data in the application state to the pending transactions file.
-
-        If there have been changes to the data, write the updated data store
-        to the data file and reset the data change flag. Handle I/O errors.
         """
         try:
             if self.app_state.blockchain_pending_transactions_has_changed:
                 with open(self.pending_transactions_file, mode='w', encoding='utf-8') as file:
-                    ujson.dump(self.app_state.pending_transactions, file, indent=4)
+                    ujson.dump(self.app_state.blockchain_pending_transactions, file, indent=4)
                     self.app_state.blockchain_pending_transactions_has_changed = False
         except IOError as e:
             print(f"Failed to save pending transactions: {e}")
     
-    def save_blockchain_wallets(self):
+    async def save_blockchain_wallets(self, address, wallet):
         """
-        Save the current data in the application state to the wallets file.
-
-        If there have been changes to the data, write the updated data store
-        to the data file and reset the data change flag. Handle I/O errors.
+        Save the provided wallet data to the wallets table.
         """
         try:
-            if self.app_state.blockchain_wallets_has_changed:
-                with open(self.wallets_file, mode='w', encoding='utf-8') as file:
-                    ujson.dump(self.app_state.wallets, file, indent=4)
-                    self.app_state.blockchain_wallets_has_changed = False
+            self.cursor.execute('''
+                INSERT OR REPLACE INTO wallets (address, public_key, private_key, words, balance, tx_count, tx_data, last_tx_timestamp, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                address,
+                wallet['public_key'],
+                wallet['private_key'],
+                wallet['words'],
+                wallet['balance'],
+                wallet['tx_count'],
+                ujson.dumps(wallet['tx_data']),
+                wallet['last_tx_timestamp'],
+                wallet['created_at']
+            ))
+            self.conn.commit()
         except IOError as e:
             print(f"Failed to save wallets: {e}")
 
     async def create_genesis_block(self):
         """Create the genesis wallet"""
         wallet = await self.new_wallet()
+        genesis_address = wallet.get('address')
         """Create the genesis block and initialize blockchain configuration."""
         blockchain_supply = self.app_state.config_store.get('BLOCKCHAIN_SUPPLY', '0')
+
+        genesis_transaction = {
+            'timestamp': int(time.time()),
+            'nonce': 0,
+            'difficulty': 0,
+            'validation_time': 0,
+            'size': 0,
+            'hash': '',
+            'txid': '',
+            'sender': genesis_address,
+            'receiver': genesis_address,
+            'validator': '',
+            'amount': blockchain_supply,
+            'data': '',
+            'fee': '0'
+        }
+
+        tx_size = len(ujson.dumps(genesis_transaction).encode())
+        genesis_transaction['txid'] = await self.hash_data(genesis_transaction)
+        genesis_transaction['size'] = tx_size
+
         genesis_block = {
             'index': 0,
             'timestamp': int(time.time()),
             'nonce': 0,
             'difficulty': 1,
             'validation_time': 0,
-            'size': 0,
+            'size': tx_size,
             'previous_hash': '0',
             'hash': '',
-            'txid': '',
-            'sender': '',
-            'receiver': wallet.get('address'),
-            'amount': blockchain_supply,
-            'data': 'Genesis Block',
+            'data': [genesis_transaction],
             'fee': '0'
         }
-        txid = await self.hash_data(genesis_block)
-        genesis_block['txid'] = txid
+    
         genesis_block['hash'] = await self.calculate_hash(genesis_block)
         self.app_state.blockchain.append(genesis_block)
-        self.app_state.blockchain_has_changed = True
-        self.save_blockchain()
+        await self.save_blockchain(genesis_block)
 
         genesis_wallet = self.app_state.wallets.get(wallet.get('address'))
         if genesis_wallet:
             genesis_wallet['balance'] = blockchain_supply
-            self.app_state.blockchain_wallets_has_changed = True
-            self.save_blockchain_wallets()
+            await self.save_blockchain_wallets(genesis_address, genesis_wallet)
 
         # Initialize blockchain configuration
         self.app_state.config_store['BLOCKCHAIN_CONF'] = {
@@ -243,8 +338,8 @@ class BlockchainManager:
             self.accumulated_transactions.append(transaction)
 
             # Remove the transaction from pending transactions by txid
-            self.app_state.pending_transactions = [
-                tx for tx in self.app_state.pending_transactions
+            self.app_state.blockchain_pending_transactions = [
+                tx for tx in self.app_state.blockchain_pending_transactions
                 if tx['txid'] != transaction['txid']
             ]
 
@@ -263,6 +358,14 @@ class BlockchainManager:
         except Exception as e:
             print(f"Error adding transaction: {e}")
             return "Error adding transaction"
+
+    async def check_block_auto_creation_interval(self):
+            block_auto_creation_interval = self.app_state.config_store.get('BLOCKCHAIN_BLOCK_AUTO_CREATION_INTERVAL')
+            current_time = time.time()
+            if current_time - self.last_block_time >= int(block_auto_creation_interval):
+                if len(self.accumulated_transactions) > 0:
+                    await self.create_and_save_block()
+                    self.last_block_time = time.time()
 
     async def create_and_save_block(self):
         from .scheduler import SchedulerManager  # Scheduler management
@@ -291,10 +394,10 @@ class BlockchainManager:
         
         # Save the block to the blockchain
         self.app_state.blockchain.append(mined_block)
-        
-        self.app_state.blockchain_has_changed = True
-        if not self.scheduler_manager.is_scheduler_active():
-            self.save_blockchain()
+        await self.save_blockchain(mined_block)
+
+        # Notify nodes
+        await self.sub_pub_manager.notify_nodes('block', ujson.dumps([mined_block]), node_type='FULL')
 
         # Update blockchain configuration
         new_difficulty = self.adjust_difficulty(mined_block['validation_time'])
@@ -305,8 +408,10 @@ class BlockchainManager:
 
         # Update wallets data
         for txn in mined_block['data']:
-            sender_wallet = self.app_state.wallets.get(txn['sender'])
-            receiver_wallet = self.app_state.wallets.get(txn['receiver'])
+            sender_address = txn['sender']
+            sender_wallet = self.app_state.wallets.get(sender_address)
+            receiver_address = txn['receiver']
+            receiver_wallet = self.app_state.wallets.get(receiver_address)
             validator_address = txn['validator']
             tx_data = f"{txn['txid']}:{block['index']}"
 
@@ -315,22 +420,19 @@ class BlockchainManager:
                 sender_wallet['last_tx_timestamp'] = mined_block['timestamp']
                 sender_wallet['tx_count'] += 1
                 sender_wallet['tx_data'].append(tx_data)
+                await self.save_blockchain_wallets(sender_address, sender_wallet)
 
             if receiver_wallet and receiver_wallet != sender_wallet:
                 receiver_wallet['balance'] = str(int(receiver_wallet['balance']) + int(txn['amount']))
                 receiver_wallet['last_tx_timestamp'] = mined_block['timestamp']
                 receiver_wallet['tx_count'] += 1
                 receiver_wallet['tx_data'].append(tx_data)
+                await self.save_blockchain_wallets(receiver_address, receiver_wallet)
             
             if validator_address:
                 if validator_address not in validator_rewards:
                     validator_rewards[validator_address] = 0
                 validator_rewards[validator_address] += int(self.app_state.config_store['BLOCKCHAIN_VALIDATOR_REWARD'])
-
-        # Save blockchain wallets
-        self.app_state.blockchain_wallets_has_changed = True
-        if not self.scheduler_manager.is_scheduler_active():
-            self.save_blockchain_wallets()
         
         # Create a single transaction per validator with the total rewards
         genesis_address = self.app_state.config_store['BLOCKCHAIN_CONF']['genesis_address']
@@ -430,14 +532,14 @@ class BlockchainManager:
         txid = await self.hash_data(transaction)
         transaction['txid'] = str(txid)
         transaction['difficulty'] = self.app_state.config_store['BLOCKCHAIN_CONF']['difficulty']
-        self.app_state.pending_transactions.append(transaction)
+        self.app_state.blockchain_pending_transactions.append(transaction)
 
         # Save pending transactions
         self.app_state.blockchain_pending_transactions_has_changed = True
         if not self.scheduler_manager.is_scheduler_active():
             self.save_blockchain_pending_transactions()
         
-        await self.sub_pub_manager.notify_nodes('transaction', transaction)
+        await self.sub_pub_manager.notify_node('transaction', transaction, node_type='ALL')
         return transaction
 
     async def update_blockchain_data(self, block, difficulty):
@@ -510,9 +612,9 @@ class BlockchainManager:
             }
 
             encrypted_wallet_data = {
-                "words": encrypted_words,
+                "public_key": str(public_key),
                 "private_key": encrypted_private_key,
-                "public_key": public_key,
+                "words": encrypted_words,
                 "balance": "0",
                 "tx_count": 0,
                 "tx_data": [],
@@ -523,9 +625,7 @@ class BlockchainManager:
             self.app_state.wallets[address] = encrypted_wallet_data
 
             # Save blockchain wallets
-            self.app_state.blockchain_wallets_has_changed = True
-            if not self.scheduler_manager.is_scheduler_active():
-                self.save_blockchain_wallets()
+            await self.save_blockchain_wallets(address, encrypted_wallet_data)
 
             return wallet_data
         else: 
@@ -611,12 +711,32 @@ class BlockchainManager:
         }
 
         # Notify nodes passing the request_id and data
-        await self.sub_pub_manager.notify_nodes('get_blocks', {'data': data, 'request_id': request_id, 'options': options})
+        await self.sub_pub_manager.notify_node('get_blocks', {'data': data, 'request_id': request_id, 'options': options}, node_type='FULL')
 
         # Wait for resolve_txns to return the result for the request_id
         result = await self.resolve_txns(request_id)
 
         # Remove the request entry from app_state.blockchain_txns_requests
+        self.app_state.blockchain_txns_requests.pop(request_id, None)
+
+        return result
+
+    async def get_block(self, *args, **kwargs):
+        data = None
+        if args:
+            for arg in args:
+                if isinstance(arg, str):
+                    data = arg
+                    break
+
+        if not data:
+            return "Not a valid block hash"
+
+        request_id = str(uuid.uuid4())
+        self.app_state.blockchain_txns_requests[request_id] = None
+
+        await self.sub_pub_manager.notify_node('get_block', {'data': data, 'request_id': request_id}, node_type='FULL')
+        result = await self.resolve_txns(request_id)
         self.app_state.blockchain_txns_requests.pop(request_id, None)
 
         return result
@@ -652,7 +772,7 @@ class BlockchainManager:
         }
 
         # Notify nodes passing the request_id and data
-        await self.sub_pub_manager.notify_nodes('get_txns', {'data': data, 'request_id': request_id, 'options': options})
+        await self.sub_pub_manager.notify_node('get_txns', {'data': data, 'request_id': request_id, 'options': options}, node_type='FULL')
 
         # Wait for resolve_txns to return the result for the request_id
         result = await self.resolve_txns(request_id)
@@ -681,7 +801,7 @@ class BlockchainManager:
         self.app_state.blockchain_txns_requests[request_id] = None
 
         # Notify nodes passing the request_id
-        await self.sub_pub_manager.notify_nodes('get_txn', {'data': data, 'request_id': request_id})
+        await self.sub_pub_manager.notify_node('get_txn', {'data': data, 'request_id': request_id}, node_type='FULL')
 
         # Wait for resolve_txns to return the result for the request_id
         result = await self.resolve_txns(request_id)
@@ -695,9 +815,35 @@ class BlockchainManager:
         while True:
             if request_id in self.app_state.blockchain_txns_requests and self.app_state.blockchain_txns_requests[request_id] is not None:
                 return self.app_state.blockchain_txns_requests[request_id]
-            await asyncio.sleep(0.1)  # Polling interval
+            await asyncio.sleep(0.5)  # Polling interval
 
     async def submit_txns_result(self, request_id, result):
         # Update the request data in app_state.blockchain_txns_requests
         if request_id in self.app_state.blockchain_txns_requests:
             self.app_state.blockchain_txns_requests[request_id] = str(result)
+
+    async def send_txn(self, private_key, receiver, amount, data, fee="0"):
+        try:
+            # Generate public key from private key
+            sk = SigningKey.from_string(bytes.fromhex(private_key), curve=SECP256k1)
+            vk = sk.get_verifying_key()
+            public_key = vk.to_string("uncompressed").hex()
+            address = await self.generate_address(bytes.fromhex(public_key))
+
+            # Retrieve the sender wallet from the cache
+            sender_wallet = self.app_state.wallets.get(address)
+            if not sender_wallet:
+                return "Sender wallet not found"
+
+            # Check if the sender has sufficient balance
+            if int(sender_wallet['balance']) < int(amount) + int(fee):
+                return "Insufficient balance"
+
+            # Create and add the transaction
+            transaction = await self.add_transaction(address, receiver, amount, data, fee)
+            txid = { "txid": transaction['txid'] }
+            return txid
+
+        except Exception as e:
+            print(f"Error sending transaction: {e}")
+            return f"Error sending transaction: {e}"

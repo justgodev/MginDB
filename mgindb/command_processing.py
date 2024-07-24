@@ -102,8 +102,10 @@ class CommandProcessor:
             'GET_TXN': self.blockchain_manager.get_txn,
             'GET_TXNS': self.blockchain_manager.get_txns,
             'GET_BLOCKS': self.blockchain_manager.get_blocks,
+            'GET_BLOCK': self.blockchain_manager.get_block,
             'RESOLVE_TXNS': self.blockchain_manager.resolve_txns,
             'SUBMIT_TXNS_RESULT': self.blockchain_manager.submit_txns_result,
+            'SEND_TXN': self.blockchain_manager.send_txn,
             'ADD_TO_BLOCK': self.blockchain_manager.add_to_block,
             'UPLOAD_FILE': self.upload_manager.save_file,
             'READ_FILE': self.upload_manager.read_file,
@@ -137,7 +139,7 @@ class CommandProcessor:
                 elif command == 'SUBMIT_TXNS_RESULT':
                     request_id, result = args.split(' ', 1)
                     return await func(request_id, result)
-                elif command == 'GET_BLOCKS':
+                elif command == 'GET_BLOCKS' or command == 'GET_TXNS':
                     options = {}
                     if 'LATEST' in args:
                         latest_value = args.split('LATEST')[1].strip().split()[0].strip('()')
@@ -149,6 +151,13 @@ class CommandProcessor:
                         order_value = args.split('ORDERBY')[1].strip().split()[0].strip('()')
                         options['order'] = order_value
                     return await func(options)
+                elif command == 'SEND_TXN':
+                    parts = args.split(' ', 4)
+                    if len(parts) < 4:
+                        return "Error: Invalid number of arguments for SEND_TXN"
+                    private_key, receiver, amount, data = parts[:4]
+                    fee = parts[4] if len(parts) == 5 else "0"
+                    return await func(private_key, receiver, amount, data, fee)
                 else:
                     return await func(args)
             else:
@@ -168,7 +177,7 @@ class CommandProcessor:
                 elif command == 'SUBMIT_TXNS_RESULT':
                     request_id, result = args.split(' ', 1)
                     return await self.run_in_executor('thread', func, request_id, result)
-                elif command == 'GET_BLOCKS':
+                elif command == 'GET_BLOCKS' or command == 'GET_TXNS':
                     options = {}
                     if 'LATEST' in args:
                         latest_value = args.split('LATEST')[1].strip().split()[0].strip('()')

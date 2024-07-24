@@ -23,13 +23,14 @@ class AppState:
             cls.sessions = {}  # Active sessions
             cls.config_store = {}  # Configuration store
             cls.blockchain = []  #  Blockchain
-            cls.pending_transactions = []  # Pending transactions
+            cls.blockchain_pending_transactions = []  # Pending transactions
             cls.wallets = {}  # Wallets
             cls.data_store = {}  # Data store
             cls.expires_store = {}  # Expiry times for data entries
             cls.indices = {}  # Indices for data
             cls.monitor_subscribers = set()  # Set of monitor subscribers
             cls.node_subscribers = set()  # Set of node subscribers
+            cls.node_lite_subscribers = set()  # Set of node lite subscribers
             cls.sub_pub = {}  # Publish/subscribe dictionary
 
             # Cache

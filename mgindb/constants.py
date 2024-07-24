@@ -17,6 +17,7 @@ CONFIG_FILE = os.path.join(BASE_DIR, 'conf.json')
 
 # Path to the blockchain file
 BLOCKCHAIN_FILE = os.path.join(DATA_DIR, 'blockchain.json')
+BLOCKCHAIN_DB = f'{DATA_DIR}/blockchain.db'
 
 # Path to the pending transactions file
 PENDING_TRANSACTIONS_FILE = os.path.join(DATA_DIR, 'pending_transactions.json')

@@ -116,15 +116,14 @@ class SchedulerTasks:
             await data_manager.cleanup_expired_keys()
             await cache_manager.cleanup_expired_entries()
 
-            # Save on File
+            # Tasks
             save_timer += 1
             if save_timer >= save_interval:
                 data_manager.save_data()
                 indices_manager.save_indices()
                 if await blockchain_manager.has_blockchain():
-                    blockchain_manager.save_blockchain()
-                    blockchain_manager.save_blockchain_pending_transactions()
-                    blockchain_manager.save_blockchain_wallets()
+                    await blockchain_manager.save_blockchain_pending_transactions()
+                    await blockchain_manager.check_block_auto_creation_interval()
                 save_timer = 0
 
             await asyncio.sleep(1)

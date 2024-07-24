@@ -87,6 +87,8 @@ class WebSocketSession:
                     self.app_state.monitor_subscribers.discard(self.sid)
                 elif key == "NODE":
                     self.app_state.node_subscribers.discard(self.sid)
+                elif key == "NODE_LITE":
+                    self.app_state.node_lite_subscribers.discard(self.sid)
                 elif key in self.app_state.sub_pub:
                     self.app_state.sub_pub[key].discard(self.sid)
                     if not self.app_state.sub_pub[key]:

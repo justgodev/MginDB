@@ -32,6 +32,7 @@ config = {
     "BLOCKCHAIN_SETUP_FEE": "",  # Blockchain setup fee
     "BLOCKCHAIN_VALIDATOR_REWARD": "",  # Blockchain validator reward
     "BLOCKCHAIN_TX_PER_BLOCK": "100",  # Blockchain tx per block
+    "BLOCKCHAIN_BLOCK_AUTO_CREATION_INTERVAL": "120", # Blockchain automatic block creation interval
     "BLOCKCHAIN_SYNC_CHUNKS": "100",  # Blockchain sync chunks
     "BLOCKCHAIN_CONF": {}  # Blockchain conf
 }

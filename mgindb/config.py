@@ -53,6 +53,7 @@ def get_default_config():
         "BLOCKCHAIN_VALIDATOR_REWARD": "",  # Blockchain validator reward
         "BLOCKCHAIN_SYNC_CHUNKS": "100",  # Blockchain sync chunks
         "BLOCKCHAIN_TX_PER_BLOCK": "100",  # Blockchain tx per block
+        "BLOCKCHAIN_BLOCK_AUTO_CREATION_INTERVAL": "60", # Blockchain automatic block creation interval
         "BLOCKCHAIN_CONF": {}  # Blockchain conf
     }
 

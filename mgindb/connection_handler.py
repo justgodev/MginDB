@@ -54,14 +54,8 @@ async def signal_stop():
     scheduler_manager.save_scheduler()
 
     if await blockchain_manager.has_blockchain():
-        print("Saving blockchain...")
-        blockchain_manager.save_blockchain()
-
         print("Saving blockchain pending transactions...")
-        blockchain_manager.save_blockchain_pending_transactions()
-
-        print("Saving blockchain wallets...")
-        blockchain_manager.save_blockchain_wallets()
+        await blockchain_manager.save_blockchain_pending_transactions()
 
     # Handle replication shutdown for master and slave
     if await replication_manager.has_replication_is_replication_master():
