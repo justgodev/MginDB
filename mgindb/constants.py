@@ -24,6 +24,7 @@ PENDING_TRANSACTIONS_FILE = os.path.join(DATA_DIR, 'pending_transactions.json')
 
 # Path to the wallets file
 WALLETS_FILE = os.path.join(DATA_DIR, 'wallets.json')
+WALLETS_DB = f'{DATA_DIR}/wallets.db'
 
 # Path to the main data file
 DATA_FILE = os.path.join(DATA_DIR, 'data.json')

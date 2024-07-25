@@ -123,7 +123,6 @@ class SchedulerTasks:
                 indices_manager.save_indices()
                 if await blockchain_manager.has_blockchain():
                     await blockchain_manager.save_blockchain_pending_transactions()
-                    await blockchain_manager.check_block_auto_creation_interval()
                 save_timer = 0
 
             await asyncio.sleep(1)

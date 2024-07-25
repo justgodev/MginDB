@@ -43,8 +43,10 @@ class BlockchainManager:
                 size INTEGER,
                 previous_hash TEXT,
                 hash TEXT,
+                checksum TEXT,
                 data TEXT,
-                fee TEXT
+                fee TEXT,
+                validator TEXT
             )
         ''')
         self.cursor.execute('''
@@ -64,6 +66,14 @@ class BlockchainManager:
 
     async def has_blockchain(self):
         return self.app_state.config_store.get('BLOCKCHAIN') == '1'
+
+    async def blockchain_routines(self):
+            block_auto_creation_interval = self.app_state.config_store.get('BLOCKCHAIN_BLOCK_AUTO_CREATION_INTERVAL')
+            current_time = time.time()
+            if current_time - self.last_block_time >= int(block_auto_creation_interval):
+                if len(self.accumulated_transactions) > 0:
+                    await self.create_and_save_block()
+                    self.last_block_time = time.time()
 
     def get_blockchain(self, args=None):
         """Return the entire blockchain or from a specific index."""
@@ -106,8 +116,10 @@ class BlockchainManager:
             'size': row[6],
             'previous_hash': row[7],
             'hash': row[8],
-            'data': ujson.loads(row[9]),
-            'fee': row[10]
+            'checksum': row[9],
+            'data': ujson.loads(row[10]),
+            'fee': row[11],
+            'validator': row[12]
         }
         return block
 
@@ -133,12 +145,13 @@ class BlockchainManager:
                             'size': row[6],
                             'previous_hash': row[7],
                             'hash': row[8],
-                            'data': ujson.loads(row[9]),
-                            'fee': row[10]
+                            'checksum': row[9],
+                            'data': ujson.loads(row[10]),
+                            'fee': row[11],
+                            'validator': row[12]
                         }
                         for row in loaded_blockchain
                     ]
-                    print('LOADED BLOCKCHAIN', self.app_state.blockchain)
         except sqlite3.Error as e:
             print(f"Failed to load blockchain: {e}")
             await self.create_genesis_block()
@@ -193,8 +206,8 @@ class BlockchainManager:
         """
         try:
             self.cursor.execute('''
-                INSERT INTO blockchain (block_index, timestamp, nonce, difficulty, validation_time, size, previous_hash, hash, data, fee)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO blockchain (block_index, timestamp, nonce, difficulty, validation_time, size, previous_hash, hash, checksum, data, fee, validator)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 block['index'],
                 block['timestamp'],
@@ -204,8 +217,10 @@ class BlockchainManager:
                 block['size'],
                 block['previous_hash'],
                 block['hash'],
+                block['checksum'],
                 ujson.dumps(block['data']),
-                block['fee']
+                block['fee'],
+                block['validator']
             ))
             self.conn.commit()
         except IOError as e:
@@ -260,6 +275,7 @@ class BlockchainManager:
             'validation_time': 0,
             'size': 0,
             'hash': '',
+            'checksum': '',
             'txid': '',
             'sender': genesis_address,
             'receiver': genesis_address,
@@ -271,7 +287,9 @@ class BlockchainManager:
 
         tx_size = len(ujson.dumps(genesis_transaction).encode())
         genesis_transaction['txid'] = await self.hash_data(genesis_transaction)
+        genesis_transaction['hash'] = await self.calculate_hash(genesis_transaction)
         genesis_transaction['size'] = tx_size
+        genesis_transaction['checksum'] = self.calculate_checksum(genesis_transaction)
 
         genesis_block = {
             'index': 0,
@@ -282,11 +300,14 @@ class BlockchainManager:
             'size': tx_size,
             'previous_hash': '0',
             'hash': '',
+            'checksum': '',
             'data': [genesis_transaction],
-            'fee': '0'
+            'fee': '0',
+            'validator': ''
         }
     
         genesis_block['hash'] = await self.calculate_hash(genesis_block)
+        genesis_block['checksum'] = self.calculate_checksum(genesis_block)
         self.app_state.blockchain.append(genesis_block)
         await self.save_blockchain(genesis_block)
 
@@ -350,7 +371,7 @@ class BlockchainManager:
             
             # Tx per block
             if len(self.accumulated_transactions) >= int(self.tx_per_block):
-                await self.create_and_save_block()
+                asyncio.create_task(self.send_block_for_mining())
 
             return ujson.dumps({
                 "confirmation": transaction
@@ -359,18 +380,105 @@ class BlockchainManager:
             print(f"Error adding transaction: {e}")
             return "Error adding transaction"
 
-    async def check_block_auto_creation_interval(self):
-            block_auto_creation_interval = self.app_state.config_store.get('BLOCKCHAIN_BLOCK_AUTO_CREATION_INTERVAL')
-            current_time = time.time()
-            if current_time - self.last_block_time >= int(block_auto_creation_interval):
-                if len(self.accumulated_transactions) > 0:
-                    await self.create_and_save_block()
-                    self.last_block_time = time.time()
+    async def send_block_for_mining(self):
+        try:
+            # Blockchain details
+            chain_length = self.app_state.config_store['BLOCKCHAIN_CONF']['chain_length']
+            previous_hash = self.app_state.config_store['BLOCKCHAIN_CONF']['previous_hash']
+
+            block = {
+                'index': chain_length,
+                'timestamp': int(time.time()),
+                'nonce': 0,
+                'difficulty': self.app_state.config_store['BLOCKCHAIN_CONF']['difficulty'],
+                'validation_time': 0,
+                'size': len(ujson.dumps(self.accumulated_transactions).encode()),
+                'previous_hash': previous_hash,
+                'hash': '',
+                'checksum': '',
+                'data': self.accumulated_transactions,  # Use accumulated transactions
+                'fee': str(sum(int(tx['fee']) for tx in self.accumulated_transactions)),
+                'validator': ''
+            }
+
+            self.accumulated_transactions = []
+            blockchain_data = self.app_state.config_store['BLOCKCHAIN_CONF']
+            blockchain_data['chain_length'] = block['index'] + 1
+
+            # Generate a unique request_id
+            request_id = str(uuid.uuid4())
+
+            # Store the request_id in app_state.blockchain_blocks_requests with empty data
+            self.app_state.blockchain_blocks_requests[request_id] = None
+
+            # Notify nodes passing the request_id
+            asyncio.create_task(self.sub_pub_manager.notify_node('mining', {'data': block, 'request_id': request_id}, node_type='FULL'))
+
+            # Wait for resolve_blocks to return the result for the request_id
+            mined_block_str = await self.resolve_blocks(request_id)
+
+            if not mined_block_str:
+                print('Mining failed or timed out')
+                return False  # Return False if mining failed
+
+            # Save the block to the blockchain
+            mined_block = ujson.loads(mined_block_str)
+            self.app_state.blockchain.append(mined_block)
+            await self.save_blockchain(mined_block)
+
+            # Notify nodes
+            asyncio.create_task(self.sub_pub_manager.notify_nodes('block', ujson.dumps([mined_block]), node_type='FULL'))
+
+            # Update blockchain configuration
+            new_difficulty = self.adjust_difficulty(mined_block['validation_time'])
+            await self.update_blockchain_data(mined_block, new_difficulty)
+
+            # Dictionary to accumulate rewards for each validator
+            validator_rewards = {}
+
+            # Update wallets data
+            for txn in mined_block['data']:
+                sender_address = txn['sender']
+                sender_wallet = self.app_state.wallets.get(sender_address)
+                receiver_address = txn['receiver']
+                receiver_wallet = self.app_state.wallets.get(receiver_address)
+                validator_address = txn['validator']
+                tx_data = f"{txn['txid']}:{block['index']}"
+
+                if sender_wallet:
+                    sender_wallet['balance'] = str(int(sender_wallet['balance']) - int(txn['amount']) - int(txn['fee']))
+                    sender_wallet['last_tx_timestamp'] = mined_block['timestamp']
+                    sender_wallet['tx_count'] += 1
+                    sender_wallet['tx_data'].append(tx_data)
+                    await self.save_blockchain_wallets(sender_address, sender_wallet)
+
+                if receiver_wallet and receiver_wallet != sender_wallet:
+                    receiver_wallet['balance'] = str(int(receiver_wallet['balance']) + int(txn['amount']))
+                    receiver_wallet['last_tx_timestamp'] = mined_block['timestamp']
+                    receiver_wallet['tx_count'] += 1
+                    receiver_wallet['tx_data'].append(tx_data)
+                    await self.save_blockchain_wallets(receiver_address, receiver_wallet)
+            
+                if validator_address:
+                    if validator_address not in validator_rewards:
+                        validator_rewards[validator_address] = 0
+                    validator_rewards[validator_address] += int(self.app_state.config_store['BLOCKCHAIN_VALIDATOR_REWARD'])
+        
+            # Create a single transaction per validator with the total rewards
+            genesis_address = self.app_state.config_store['BLOCKCHAIN_CONF']['genesis_address']
+            for validator_address, total_reward in validator_rewards.items():
+                validator_data = str({'Validator reward': [txn['hash'] for txn in mined_block['data'] if txn['validator'] == validator_address]})
+                await self.add_transaction(genesis_address, validator_address, str(total_reward), validator_data)
+
+            # Remove the request entry from app_state.blockchain_txns_requests
+            self.app_state.blockchain_blocks_requests.pop(request_id, None)
+
+            return True  # Return True if everything was successful
+        except Exception as e:
+            print(f"Error sending block for mining: {e}")
+            return False  # Return False if an exception occurred
 
     async def create_and_save_block(self):
-        from .scheduler import SchedulerManager  # Scheduler management
-        self.scheduler_manager = SchedulerManager()  # Manages the scheduler
-
         chain_length = self.app_state.config_store['BLOCKCHAIN_CONF']['chain_length']
         previous_hash = self.app_state.config_store['BLOCKCHAIN_CONF']['previous_hash']
 
@@ -383,21 +491,21 @@ class BlockchainManager:
             'size': len(ujson.dumps(self.accumulated_transactions).encode()),
             'previous_hash': previous_hash,
             'data': self.accumulated_transactions,  # Use accumulated transactions
-            'fee': str(sum(int(tx['fee']) for tx in self.accumulated_transactions))
+            'fee': str(sum(int(tx['fee']) for tx in self.accumulated_transactions)),
+            'validator': ''
         }
 
         # Clear the accumulated transactions
         self.accumulated_transactions = []
-        
-        block['hash'] = await self.calculate_hash(block)
         mined_block = await self.mine_block(block, block['difficulty'])
+        mined_block['checksum'] = self.calculate_checksum(mined_block)
         
         # Save the block to the blockchain
         self.app_state.blockchain.append(mined_block)
         await self.save_blockchain(mined_block)
 
         # Notify nodes
-        await self.sub_pub_manager.notify_nodes('block', ujson.dumps([mined_block]), node_type='FULL')
+        asyncio.create_task(self.sub_pub_manager.notify_nodes('block', ujson.dumps([mined_block]), node_type='FULL'))
 
         # Update blockchain configuration
         new_difficulty = self.adjust_difficulty(mined_block['validation_time'])
@@ -532,6 +640,8 @@ class BlockchainManager:
         txid = await self.hash_data(transaction)
         transaction['txid'] = str(txid)
         transaction['difficulty'] = self.app_state.config_store['BLOCKCHAIN_CONF']['difficulty']
+        transaction['size'] = len(ujson.dumps(transaction).encode())
+        transaction['checksum'] = self.calculate_checksum(transaction)
         self.app_state.blockchain_pending_transactions.append(transaction)
 
         # Save pending transactions
@@ -539,18 +649,27 @@ class BlockchainManager:
         if not self.scheduler_manager.is_scheduler_active():
             self.save_blockchain_pending_transactions()
         
-        await self.sub_pub_manager.notify_node('transaction', transaction, node_type='ALL')
+        asyncio.create_task(self.sub_pub_manager.notify_node('transaction', transaction, node_type='ALL'))
+        #await self.blockchain_routines()
         return transaction
 
     async def update_blockchain_data(self, block, difficulty):
         blockchain_data = self.app_state.config_store['BLOCKCHAIN_CONF']
         blockchain_data['previous_hash'] = block['hash']
-        blockchain_data['chain_length'] = block['index'] + 1
         blockchain_data['latest_block'] = block['timestamp']
         blockchain_data['validation_time'] = block['validation_time']
         blockchain_data['difficulty'] = difficulty
         
         save_config()
+    
+    def calculate_checksum(self, data):
+        """Calculate SHA-256 checksum of the given data."""
+        data_string = ujson.dumps(data, sort_keys=True).encode()
+        return hashlib.sha256(data_string).hexdigest()
+
+    def verify_checksum(self, data, checksum):
+        """Verify the given checksum matches the calculated checksum of the data."""
+        return self.calculate_checksum(data) == checksum
     
     async def generate_mnemonic(self):
         mnemonic = Mnemonic("english")
@@ -711,7 +830,7 @@ class BlockchainManager:
         }
 
         # Notify nodes passing the request_id and data
-        await self.sub_pub_manager.notify_node('get_blocks', {'data': data, 'request_id': request_id, 'options': options}, node_type='FULL')
+        asyncio.create_task(self.sub_pub_manager.notify_node('get_blocks', {'data': data, 'request_id': request_id, 'options': options}, node_type='FULL'))
 
         # Wait for resolve_txns to return the result for the request_id
         result = await self.resolve_txns(request_id)
@@ -735,7 +854,7 @@ class BlockchainManager:
         request_id = str(uuid.uuid4())
         self.app_state.blockchain_txns_requests[request_id] = None
 
-        await self.sub_pub_manager.notify_node('get_block', {'data': data, 'request_id': request_id}, node_type='FULL')
+        asyncio.create_task(self.sub_pub_manager.notify_node('get_block', {'data': data, 'request_id': request_id}, node_type='FULL'))
         result = await self.resolve_txns(request_id)
         self.app_state.blockchain_txns_requests.pop(request_id, None)
 
@@ -772,7 +891,7 @@ class BlockchainManager:
         }
 
         # Notify nodes passing the request_id and data
-        await self.sub_pub_manager.notify_node('get_txns', {'data': data, 'request_id': request_id, 'options': options}, node_type='FULL')
+        asyncio.create_task(self.sub_pub_manager.notify_node('get_txns', {'data': data, 'request_id': request_id, 'options': options}, node_type='FULL'))
 
         # Wait for resolve_txns to return the result for the request_id
         result = await self.resolve_txns(request_id)
@@ -801,7 +920,7 @@ class BlockchainManager:
         self.app_state.blockchain_txns_requests[request_id] = None
 
         # Notify nodes passing the request_id
-        await self.sub_pub_manager.notify_node('get_txn', {'data': data, 'request_id': request_id}, node_type='FULL')
+        asyncio.create_task(self.sub_pub_manager.notify_node('get_txn', {'data': data, 'request_id': request_id}, node_type='FULL'))
 
         # Wait for resolve_txns to return the result for the request_id
         result = await self.resolve_txns(request_id)
@@ -811,11 +930,22 @@ class BlockchainManager:
 
         return result
 
+    async def resolve_blocks(self, request_id):
+        while True:
+            if request_id in self.app_state.blockchain_blocks_requests and self.app_state.blockchain_blocks_requests[request_id] is not None:
+                return self.app_state.blockchain_blocks_requests[request_id]
+            await asyncio.sleep(1)  # Polling interval
+
+    async def submit_block_result(self, request_id, result):
+        # Update the request data in app_state.blockchain_blocks_requests
+        if request_id in self.app_state.blockchain_blocks_requests:
+            self.app_state.blockchain_blocks_requests[request_id] = str(result)
+
     async def resolve_txns(self, request_id):
         while True:
             if request_id in self.app_state.blockchain_txns_requests and self.app_state.blockchain_txns_requests[request_id] is not None:
                 return self.app_state.blockchain_txns_requests[request_id]
-            await asyncio.sleep(0.5)  # Polling interval
+            await asyncio.sleep(1)  # Polling interval
 
     async def submit_txns_result(self, request_id, result):
         # Update the request data in app_state.blockchain_txns_requests

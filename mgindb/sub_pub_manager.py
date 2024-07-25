@@ -116,7 +116,7 @@ class Notifier:
         for sid in subscribers:
             await self.send_websocket_message(sid, message)
 
-    async def notify_node(self, type, data, node_type='ALL'):
+    async def notify_node(self, type, data, node_type='ALL', sid=None):
         """
         Notify node subscribers with the transaction data in a round-robin manner.
 
@@ -144,7 +144,7 @@ class Notifier:
             next_node_sid = node_subscribers[self.last_node_index]
             await self.send_websocket_message(next_node_sid, message)
 
-    async def notify_nodes(self, type, data, node_type='ALL'):
+    async def notify_nodes(self, type, data, node_type='ALL', sid=None):
         """
         Notify all node subscribers with the transaction data.
 
@@ -252,7 +252,7 @@ class SubPubManager:
         """
         await self.notifier.notify_subscribers(key, data)
 
-    async def notify_node(self, type, data, node_type='ALL'):
+    async def notify_node(self, type, data, node_type='ALL', sid=None):
         """
         Notify all node subscribers with the transaction data.
 
@@ -261,9 +261,9 @@ class SubPubManager:
             data (dict): The data to send.
             node_type (str): The type of nodes to notify ('ALL', 'FULL', 'LITE').
         """
-        await self.notifier.notify_node(type, data, node_type)
+        await self.notifier.notify_node(type, data, node_type, sid)
 
-    async def notify_nodes(self, type, data, node_type='ALL'):
+    async def notify_nodes(self, type, data, node_type='ALL', sid=None):
         """
         Notify all node subscribers with the transaction data.
 
@@ -272,4 +272,4 @@ class SubPubManager:
             data (dict): The data to send.
             node_type (str): The type of nodes to notify ('ALL', 'FULL', 'LITE').
         """
-        await self.notifier.notify_nodes(type, data, node_type)
+        await self.notifier.notify_nodes(type, data, node_type, sid)

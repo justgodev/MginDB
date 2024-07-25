@@ -33,10 +33,10 @@
     "BLOCKCHAIN_TX_PER_BLOCK": "10",
     "BLOCKCHAIN_BLOCK_AUTO_CREATION_INTERVAL": "120",
     "BLOCKCHAIN_CONF": {
-        "genesis_address": "MjF4EnYyiLQj4tNpygMUTmezfehgw2diRP",
+        "genesis_address": "MpJgGcMvjrucFaUKQGE1ygzdkj6qDACg7m",
         "chain_length": 1,
-        "previous_hash": "54b5fc58d3da311c8f5a14e9a859c96363b96eb8ef307469c23380986bdab79f",
-        "latest_block": 1721758861,
+        "previous_hash": "4605bad6b2f2ed557c5fca408940f6432e6419a7463bfd34667fccfc04145d45",
+        "latest_block": 1721870044,
         "validation_time": 0,
         "difficulty": 1,
         "fee": "100000000"

@@ -103,6 +103,8 @@ class CommandProcessor:
             'GET_TXNS': self.blockchain_manager.get_txns,
             'GET_BLOCKS': self.blockchain_manager.get_blocks,
             'GET_BLOCK': self.blockchain_manager.get_block,
+            'RESOLVE_BLOCKS': self.blockchain_manager.resolve_blocks,
+            'SUBMIT_BLOCK_RESULT': self.blockchain_manager.submit_block_result,
             'RESOLVE_TXNS': self.blockchain_manager.resolve_txns,
             'SUBMIT_TXNS_RESULT': self.blockchain_manager.submit_txns_result,
             'SEND_TXN': self.blockchain_manager.send_txn,
@@ -136,7 +138,7 @@ class CommandProcessor:
                     async for chunk in async_gen:
                         await websocket.send(chunk)
                     return None
-                elif command == 'SUBMIT_TXNS_RESULT':
+                elif command == 'SUBMIT_TXNS_RESULT' or command == 'SUBMIT_BLOCK_RESULT':
                     request_id, result = args.split(' ', 1)
                     return await func(request_id, result)
                 elif command == 'GET_BLOCKS' or command == 'GET_TXNS':
@@ -174,7 +176,7 @@ class CommandProcessor:
                 elif command == 'VERIFY_2FA':
                     secret, code = args.split(' ')
                     return await self.run_in_executor('thread', func, secret, code)
-                elif command == 'SUBMIT_TXNS_RESULT':
+                elif command == 'SUBMIT_TXNS_RESULT' or command == 'SUBMIT_BLOCK_RESULT':
                     request_id, result = args.split(' ', 1)
                     return await self.run_in_executor('thread', func, request_id, result)
                 elif command == 'GET_BLOCKS' or command == 'GET_TXNS':
@@ -429,7 +431,7 @@ class DataCommandHandler:
                 receiver = wallet_receiver  # Example receiver, you might replace this with the actual receiver information
                 amount = 0  # Amount associated with the transaction, you might adjust this based on your use case
                 data = str({'command': 'SET', 'key': key_pattern, 'value': value})
-                await self.processor.blockchain_manager.add_transaction(sender, receiver, amount, data)
+                asyncio.create_task(self.processor.blockchain_manager.add_transaction(sender, receiver, amount, data))
 
             if await self.processor.replication_manager.has_replication_is_replication_master():
                 replication_command = f"SET {':'.join(parts)} {value}"
