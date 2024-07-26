@@ -104,11 +104,11 @@ class CommandProcessor:
             'GET_BLOCKS': self.blockchain_manager.get_blocks,
             'GET_BLOCK': self.blockchain_manager.get_block,
             'RESOLVE_BLOCKS': self.blockchain_manager.resolve_blocks,
-            'SUBMIT_BLOCK_RESULT': self.blockchain_manager.submit_block_result,
+            'SUBMIT_BLOCK': self.blockchain_manager.submit_block,
             'RESOLVE_TXNS': self.blockchain_manager.resolve_txns,
             'SUBMIT_TXNS_RESULT': self.blockchain_manager.submit_txns_result,
             'SEND_TXN': self.blockchain_manager.send_txn,
-            'ADD_TO_BLOCK': self.blockchain_manager.add_to_block,
+            'SUBMIT_TXN': self.blockchain_manager.submit_txn,
             'UPLOAD_FILE': self.upload_manager.save_file,
             'READ_FILE': self.upload_manager.read_file,
             'NEW_2FA': self.two_factor_manager.generate,
@@ -138,9 +138,9 @@ class CommandProcessor:
                     async for chunk in async_gen:
                         await websocket.send(chunk)
                     return None
-                elif command == 'SUBMIT_TXNS_RESULT' or command == 'SUBMIT_BLOCK_RESULT':
-                    request_id, result = args.split(' ', 1)
-                    return await func(request_id, result)
+                elif command == 'SUBMIT_TXNS_RESULT' or command == 'SUBMIT_BLOCK':
+                    request_id, data = args.split(' ', 1)
+                    return await func(request_id, data)
                 elif command == 'GET_BLOCKS' or command == 'GET_TXNS':
                     options = {}
                     if 'LATEST' in args:
@@ -176,9 +176,9 @@ class CommandProcessor:
                 elif command == 'VERIFY_2FA':
                     secret, code = args.split(' ')
                     return await self.run_in_executor('thread', func, secret, code)
-                elif command == 'SUBMIT_TXNS_RESULT' or command == 'SUBMIT_BLOCK_RESULT':
-                    request_id, result = args.split(' ', 1)
-                    return await self.run_in_executor('thread', func, request_id, result)
+                elif command == 'SUBMIT_TXNS_RESULT' or command == 'SUBMIT_BLOCK':
+                    request_id, data = args.split(' ', 1)
+                    return await self.run_in_executor('thread', func, request_id, data)
                 elif command == 'GET_BLOCKS' or command == 'GET_TXNS':
                     options = {}
                     if 'LATEST' in args:
@@ -765,7 +765,6 @@ class DataCommandHandler:
             shards = AppState().config_store.get('SHARDS')
             shard_uris = [f"{shard}:{port}" for shard in shards if shard != host]  # Get the URIs of the shards
             results = await self.processor.sharding_manager.broadcast_query('FLUSHALL', shard_uris)  # Broadcast FLUSHALL command to shards
-            print("Flush results from remote shards:", results)
 
         return "All indices and data flushed successfully."
 

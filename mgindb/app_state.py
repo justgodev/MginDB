@@ -24,6 +24,7 @@ class AppState:
             cls.config_store = {}  # Configuration store
             cls.blockchain = []  #  Blockchain
             cls.blockchain_pending_transactions = []  # Pending transactions
+            cls.blockchain_mempool = []  # Mempool transactions
             cls.wallets = {}  # Wallets
             cls.data_store = {}  # Data store
             cls.expires_store = {}  # Expiry times for data entries

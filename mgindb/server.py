@@ -129,7 +129,7 @@ class ServerManager:
             port = self.app_state.config_store.get('PORT')  # Get port from config
             
             websocket_manager = WebSocketManager(self.thread_executor, self.process_executor)  # Create an instance of WebSocketManager
-            await websockets.serve(websocket_manager.handle_websocket, host, port, max_size=10*1024*1024)  # Start the WebSocket server
+            await websockets.serve(websocket_manager.handle_websocket, host, port, max_size=None)  # Start the WebSocket server
             print(f"WebSocket serving on {host}:{port}")  # Print message with WebSocket server details
 
             # Wait for stop signal

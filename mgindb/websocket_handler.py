@@ -1,8 +1,8 @@
-import uuid  # Module for generating unique identifiers
-import ujson  # Module for JSON operations
-from .app_state import AppState  # Importing AppState class from app_state module
-from .connection_handler import asyncio, websockets, signal, stop_event, signal_stop  # Importing necessary functions and classes from connection_handler module
-from .command_processing import CommandProcessor  # Importing CommandProcessor class from command_processing module
+import uuid
+import ujson
+from .app_state import AppState
+from .connection_handler import asyncio, websockets
+from .command_processing import CommandProcessor
 
 class WebSocketManager:
     def __init__(self, thread_executor, process_executor):
@@ -24,12 +24,14 @@ class WebSocketSession:
             'websocket': websocket,
             'subscribed_keys': set(),
         }
+        self.message_queue = asyncio.Queue()
 
     async def start(self):
         """Start the WebSocket session."""
         try:
             await self.authenticate()
-            await self.listen_for_messages()
+            # Use asyncio.gather to run both coroutines concurrently
+            await asyncio.gather(self.listen_for_messages(), self.process_messages())
         except websockets.exceptions.ConnectionClosedOK:
             pass
         except websockets.exceptions.ConnectionClosedError:
@@ -71,11 +73,32 @@ class WebSocketSession:
             return False
 
     async def listen_for_messages(self):
-        """Listen for messages from the WebSocket and process commands."""
+        """Listen for messages from the WebSocket and add them to the queue."""
         async for message in self.websocket:
+            print(f'Socket Message received: {message}')
+            await self.message_queue.put(message)
+            print(f'Message put in queue: {message}')
+
+    async def process_messages(self):
+        """Process messages from the queue."""
+        while True:
+            message = await self.message_queue.get()
+            print(f'Message dequeued for processing: {message}')
+            asyncio.create_task(self.process_message(message))
+
+    async def process_message(self, message):
+        """Process a single message."""
+        try:
+            print(f"Processing message: {message}")
             response = await self.command_processor.process_command(message, self.sid, self.websocket)
             response = ujson.dumps(response) if isinstance(response, dict) else str(response)
             await self.websocket.send(response)
+            print(f'Response sent: {response}')
+        except Exception as e:
+            print(f"Error processing command: {e}")
+        finally:
+            self.message_queue.task_done()
+            print(f'Message processing completed: {message}')
 
     async def clean_up(self):
         """Clean up the session and remove subscriptions."""
