@@ -419,7 +419,8 @@ class BlockchainManager:
             self.app_state.blockchain_blocks_requests[request_id] = None
 
             # Notify nodes passing the request_id
-            await self.sub_pub_manager.notify_node("mine_block", block, request_id, node_type="FULL")
+            notify = asyncio.create_task(self.sub_pub_manager.notify_node("mine_block", block, request_id, node_type="FULL"))
+            await notify
 
             # Wait for resolve_blocks to return the result for the request_id
             resolve = asyncio.create_task(self.resolve_blocks(request_id))
@@ -438,7 +439,8 @@ class BlockchainManager:
             await self.save_blockchain(mined_block)
 
             # Notify nodes
-            await self.sub_pub_manager.notify_nodes("new_block", [mined_block], None, node_type="FULL")
+            notify = asyncio.create_task(self.sub_pub_manager.notify_nodes("new_block", [mined_block], None, node_type="FULL"))
+            await notify
 
             # Update blockchain configuration
             new_difficulty = self.adjust_difficulty(mined_block['validation_time'])
@@ -516,7 +518,8 @@ class BlockchainManager:
         await self.save_blockchain(mined_block)
 
         # Notify nodes
-        await self.sub_pub_manager.notify_nodes("new_block", [mined_block], None, node_type="FULL")
+        notify = asyncio.create_task(self.sub_pub_manager.notify_nodes("new_block", [mined_block], None, node_type="FULL"))
+        await notify
 
         # Update blockchain configuration
         new_difficulty = self.adjust_difficulty(mined_block['validation_time'])
@@ -659,8 +662,10 @@ class BlockchainManager:
         self.app_state.blockchain_pending_transactions_has_changed = True
         if not self.scheduler_manager.is_scheduler_active():
             self.save_blockchain_pending_transactions()
-        
-        await self.sub_pub_manager.notify_node("txn", transaction, None, node_type="ALL")
+
+        notify = asyncio.create_task(self.sub_pub_manager.notify_node("txn", transaction, None, node_type="ALL"))
+        await notify
+
         #await self.blockchain_routines()
         return transaction
 
@@ -859,7 +864,8 @@ class BlockchainManager:
         self.app_state.blockchain_txns_requests[request_id] = None
 
         # Notify nodes passing the request_id and data
-        await self.sub_pub_manager.notify_node("get_blocks", options, request_id, node_type="FULL")
+        notify = asyncio.create_task(self.sub_pub_manager.notify_node("get_blocks", options, request_id, node_type="FULL"))
+        await notify
         
         # Wait for resolve_txns to return the result for the request_id
         resolve = asyncio.create_task(self.resolve_txns(request_id))
@@ -884,7 +890,9 @@ class BlockchainManager:
         request_id = str(uuid.uuid4())
         self.app_state.blockchain_txns_requests[request_id] = None
 
-        await self.sub_pub_manager.notify_node("get_block", data, request_id, node_type="FULL")
+        notify = asyncio.create_task(self.sub_pub_manager.notify_node("get_block", data, request_id, node_type="FULL"))
+        await notify
+
         result = await self.resolve_txns(request_id)
         self.app_state.blockchain_txns_requests.pop(request_id, None)
 
@@ -908,7 +916,8 @@ class BlockchainManager:
         self.app_state.blockchain_txns_requests[request_id] = None
 
         # Notify nodes passing the request_id and data
-        await self.sub_pub_manager.notify_node("get_txns", options, request_id, node_type="FULL")
+        notify = asyncio.create_task(self.sub_pub_manager.notify_node("get_txns", options, request_id, node_type="FULL"))
+        await notify
 
         # Wait for resolve_txns to return the result for the request_id
         result = await self.resolve_txns(request_id)
@@ -937,10 +946,13 @@ class BlockchainManager:
         self.app_state.blockchain_txns_requests[request_id] = None
 
         # Notify nodes passing the request_id
-        await self.sub_pub_manager.notify_node("get_txn", data, request_id, node_type="FULL")
-
+        notify = asyncio.create_task(self.sub_pub_manager.notify_node("get_txn", data, request_id, node_type="FULL"))
+        
         # Wait for resolve_txns to return the result for the request_id
-        result = await self.resolve_txns(request_id)
+        resolve = asyncio.create_task(self.resolve_txns(request_id))
+        
+        await notify
+        result = await resolve
 
         # Remove the request entry from app_state.blockchain_txns_requests
         self.app_state.blockchain_txns_requests.pop(request_id, None)

@@ -25,7 +25,8 @@ class WebSocketSession:
             'websocket': websocket,
             'subscribed_keys': set(),
         }
-        self.message_queue = asyncio.Queue()
+        self.message_queue = asyncio.Queue(maxsize=100)  # Limit the queue size to avoid memory issues
+        self.stop_event = asyncio.Event()
 
     async def start(self):
         """Start the WebSocket session."""
@@ -84,14 +85,15 @@ class WebSocketSession:
             print(f"Error listening for messages for session ID {self.sid}: {e}")
         finally:
             print(f"Listener is closing for session ID: {self.sid}")
+            self.stop_event.set()
             await self.clean_up()
 
     async def process_messages(self):
         """Process messages from the queue."""
-        while True:
+        while not self.stop_event.is_set() or not self.message_queue.empty():
             message = await self.message_queue.get()
             print(f'Message dequeued for processing: {message}')
-            asyncio.create_task(self.process_message(message))
+            await self.process_message(message)
 
     async def process_message(self, message):
         """Process a single message."""
@@ -100,7 +102,7 @@ class WebSocketSession:
             command = asyncio.create_task(self.command_processor.process_command(message, self.sid, self.websocket))
             response = await command
             response = ujson.dumps(response) if isinstance(response, dict) else str(response)
-            asyncio.create_task(self.websocket.send(response))
+            await self.websocket.send(response)
             print(f'Response sent: {response}')
         except Exception as e:
             print(f"Error processing command for session ID {self.sid}: {e}")
@@ -140,7 +142,7 @@ class WebSocketSession:
 
             print(f"Clean up completed for session ID: {self.sid}")
         except Exception as e:
-            print(f"Error during clean_up for session ID: {self.sid}: {e}")
+            print(f"Error during clean_up for session ID {self.sid}: {e}")
 
 # Original function to handle websockets using the new WebSocketManager
 async def handle_websocket(websocket, path, thread_executor, process_executor):
