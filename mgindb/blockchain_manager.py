@@ -419,7 +419,8 @@ class BlockchainManager:
             await self.sub_pub_manager.notify_node("mine_block", block, request_id, node_type="FULL")
 
             # Wait for resolve_blocks to return the result for the request_id
-            mined_block = await self.resolve_blocks(request_id)
+            resolve = asyncio.create_task(self.resolve_blocks(request_id))
+            mined_block = await resolve
 
             if not mined_block:
                 print('Mining failed or timed out')
@@ -745,8 +746,15 @@ class BlockchainManager:
             }
 
             self.app_state.wallets[address] = encrypted_wallet_data
+            
+            if "wallets" not in self.app_state.data_store:
+                self.app_state.data_store["wallets"] = {}
+            
+            if address not in self.app_state.data_store["wallets"]:
+                self.app_state.data_store["wallets"][address] = encrypted_wallet_data
 
             # Save blockchain wallets
+            self.app_state.data_has_changed = True
             await self.save_blockchain_wallets(address, encrypted_wallet_data)
 
             return wallet_data
@@ -779,6 +787,28 @@ class BlockchainManager:
         }
 
         return wallet_data
+
+    async def connect_wallet(self, input_value):
+        try:
+            if len(input_value.split()) > 1:  # Assuming it's a mnemonic
+                mnemonic = input_value
+                seed = Mnemonic.to_seed(mnemonic)
+                private_key, public_key, address = await self.generate_keys_from_seed(seed)
+            else:  # Assuming it's a private key
+                private_key = input_value
+                sk = SigningKey.from_string(bytes.fromhex(private_key), curve=SECP256k1)
+                vk = sk.get_verifying_key()
+                public_key = vk.to_string("uncompressed").hex()
+                address = await self.generate_address(bytes.fromhex(public_key))
+
+            wallet_data = self.app_state.wallets.get(address)
+            if wallet_data:
+                return {"status": "success", "address": address}
+            else:
+                return {"status": "error", "message": "Wallet not found"}
+
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
     
     async def get_wallet_balance(self, *args, **kwargs):
         # Extract address from args
@@ -821,8 +851,10 @@ class BlockchainManager:
 
         # Notify nodes passing the request_id and data
         await self.sub_pub_manager.notify_node("get_blocks", options, request_id, node_type="FULL")
+        
         # Wait for resolve_txns to return the result for the request_id
-        result = await self.resolve_txns(request_id)
+        resolve = asyncio.create_task(self.resolve_txns(request_id))
+        result = await resolve
 
         # Remove the request entry from app_state.blockchain_txns_requests
         self.app_state.blockchain_txns_requests.pop(request_id, None)

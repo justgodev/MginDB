@@ -1,7 +1,8 @@
 import uuid
 import ujson
+import asyncio
+import websockets
 from .app_state import AppState
-from .connection_handler import asyncio, websockets
 from .command_processing import CommandProcessor
 
 class WebSocketManager:
@@ -29,18 +30,16 @@ class WebSocketSession:
     async def start(self):
         """Start the WebSocket session."""
         try:
+            print(f"Starting WebSocket session with ID: {self.sid}")
             await self.authenticate()
-            # Use asyncio.gather to run both coroutines concurrently
-            await asyncio.gather(self.listen_for_messages(), self.process_messages())
-        except websockets.exceptions.ConnectionClosedOK:
-            pass
-        except websockets.exceptions.ConnectionClosedError:
-            pass
-        except asyncio.CancelledError:
-            await self.websocket.close(code=1001, reason='Server shutdown')
+            await asyncio.gather(
+                self.listen_for_messages(),
+                self.process_messages()
+            )
         except Exception as e:
-            print(f"Failed to handle message due to: {e}")
+            print(f"Failed to handle message for session ID {self.sid} due to: {e}")
         finally:
+            print(f"Cleaning up session ID: {self.sid}")
             await self.clean_up()
 
     async def authenticate(self):
@@ -74,10 +73,18 @@ class WebSocketSession:
 
     async def listen_for_messages(self):
         """Listen for messages from the WebSocket and add them to the queue."""
-        async for message in self.websocket:
-            print(f'Socket Message received: {message}')
-            await self.message_queue.put(message)
-            print(f'Message put in queue: {message}')
+        try:
+            async for message in self.websocket:
+                print(f'Socket Message received: {message}')
+                await self.message_queue.put(message)
+                print(f'Message put in queue: {message}')
+        except websockets.exceptions.ConnectionClosed:
+            print(f"WebSocket connection closed for session ID: {self.sid}")
+        except Exception as e:
+            print(f"Error listening for messages for session ID {self.sid}: {e}")
+        finally:
+            print(f"Listener is closing for session ID: {self.sid}")
+            await self.clean_up()
 
     async def process_messages(self):
         """Process messages from the queue."""
@@ -90,32 +97,50 @@ class WebSocketSession:
         """Process a single message."""
         try:
             print(f"Processing message: {message}")
-            response = await self.command_processor.process_command(message, self.sid, self.websocket)
+            command = asyncio.create_task(self.command_processor.process_command(message, self.sid, self.websocket))
+            response = await command
             response = ujson.dumps(response) if isinstance(response, dict) else str(response)
-            await self.websocket.send(response)
+            asyncio.create_task(self.websocket.send(response))
             print(f'Response sent: {response}')
         except Exception as e:
-            print(f"Error processing command: {e}")
+            print(f"Error processing command for session ID {self.sid}: {e}")
         finally:
             self.message_queue.task_done()
             print(f'Message processing completed: {message}')
 
     async def clean_up(self):
         """Clean up the session and remove subscriptions."""
-        session = self.app_state.sessions.pop(self.sid, None)
-        if session:
-            subscribed_keys = session.get('subscribed_keys', set())
-            for key in subscribed_keys:
-                if key == "MONITOR":
-                    self.app_state.monitor_subscribers.discard(self.sid)
-                elif key == "NODE":
-                    self.app_state.node_subscribers.discard(self.sid)
-                elif key == "NODE_LITE":
-                    self.app_state.node_lite_subscribers.discard(self.sid)
-                elif key in self.app_state.sub_pub:
-                    self.app_state.sub_pub[key].discard(self.sid)
-                    if not self.app_state.sub_pub[key]:
-                        del self.app_state.sub_pub[key]
+        try:
+            print(f"Starting clean_up for session ID: {self.sid}")
+            session = self.app_state.sessions.pop(self.sid, None)
+            if session:
+                print(f"Session found: {session}")
+                subscribed_keys = session.get('subscribed_keys', set())
+                print(f"Subscribed keys: {subscribed_keys}")
+
+                for key in subscribed_keys:
+                    print(f"Processing key: {key}")
+                    if key == "MONITOR":
+                        self.app_state.monitor_subscribers.discard(self.sid)
+                        print(f"Removed {self.sid} from monitor_subscribers")
+                    elif key == "NODE":
+                        self.app_state.node_subscribers.discard(self.sid)
+                        print(f"Removed {self.sid} from node_subscribers")
+                    elif key == "NODE_LITE":
+                        self.app_state.node_lite_subscribers.discard(self.sid)
+                        print(f"Removed {self.sid} from node_lite_subscribers")
+                    elif key in self.app_state.sub_pub:
+                        self.app_state.sub_pub[key].discard(self.sid)
+                        print(f"Removed {self.sid} from sub_pub[{key}]")
+                        if not self.app_state.sub_pub[key]:
+                            del self.app_state.sub_pub[key]
+                            print(f"Deleted sub_pub[{key}] as it is now empty")
+            else:
+                print(f"No session found for session ID: {self.sid}")
+
+            print(f"Clean up completed for session ID: {self.sid}")
+        except Exception as e:
+            print(f"Error during clean_up for session ID: {self.sid}: {e}")
 
 # Original function to handle websockets using the new WebSocketManager
 async def handle_websocket(websocket, path, thread_executor, process_executor):
