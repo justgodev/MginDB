@@ -278,7 +278,7 @@ class BlockchainManager:
             'hash': '',
             'checksum': '',
             'txid': '',
-            'sender': genesis_address,
+            'sender': '',
             'receiver': genesis_address,
             'validator': '',
             'amount': blockchain_supply,
@@ -314,7 +314,11 @@ class BlockchainManager:
 
         genesis_wallet = self.app_state.wallets.get(wallet.get('address'))
         if genesis_wallet:
+            tx_data = f"{genesis_transaction['txid']}:{genesis_block['index']}"
             genesis_wallet['balance'] = blockchain_supply
+            genesis_wallet['last_tx_timestamp'] = genesis_transaction['timestamp']
+            genesis_wallet['tx_count'] += 1
+            genesis_wallet['tx_data'].append(tx_data)
             await self.save_blockchain_wallets(genesis_address, genesis_wallet)
 
         # Initialize blockchain configuration
@@ -391,7 +395,7 @@ class BlockchainManager:
             previous_hash = self.app_state.config_store['BLOCKCHAIN_CONF']['previous_hash']
 
             block = {
-                'index': chain_length,
+                'index': '',
                 'timestamp': int(time.time()),
                 'nonce': 0,
                 'difficulty': self.app_state.config_store['BLOCKCHAIN_CONF']['difficulty'],
@@ -407,7 +411,6 @@ class BlockchainManager:
 
             self.app_state.blockchain_mempool = []
             blockchain_data = self.app_state.config_store['BLOCKCHAIN_CONF']
-            blockchain_data['chain_length'] = chain_length + 1
 
             # Generate a unique request_id
             request_id = str(uuid.uuid4())
@@ -425,6 +428,10 @@ class BlockchainManager:
             if not mined_block:
                 print('Mining failed or timed out')
                 return False  # Return False if mining failed
+
+            chain_length = self.app_state.config_store['BLOCKCHAIN_CONF']['chain_length']
+            mined_block["index"] = chain_length
+            blockchain_data['chain_length'] = chain_length + 1
 
             # Save the block to the blockchain
             self.app_state.blockchain.append(mined_block)
@@ -677,7 +684,7 @@ class BlockchainManager:
     
     async def generate_mnemonic(self):
         mnemonic = Mnemonic("english")
-        words = mnemonic.generate(strength=256)
+        words = mnemonic.generate(strength=128)
         seed = Mnemonic.to_seed(words)
         return words, seed
 
@@ -722,7 +729,9 @@ class BlockchainManager:
             private_key, public_key, address = await self.generate_keys_from_seed(seed)
 
             # Encrypt the mnemonic and private key with Fernet using the private key as the encryption key
-            encryption_key = base64.urlsafe_b64encode(hashlib.sha256(bytes.fromhex(private_key)).digest())
+            address_bytes = base58.b58decode(address)
+            address_hash = hashlib.sha256(address_bytes).digest()
+            encryption_key = base64.urlsafe_b64encode(address_hash)
             fernet = Fernet(encryption_key)
             encrypted_words = fernet.encrypt(words.encode()).decode()
             encrypted_private_key = fernet.encrypt(private_key.encode()).decode()
