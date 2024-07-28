@@ -51,14 +51,11 @@ class BlockchainManager:
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS wallets (
                 address TEXT PRIMARY KEY,
-                public_key TEXT,
-                private_key TEXT,
-                words TEXT,
                 balance TEXT,
+                balance_pending TEXT,
                 tx_count INTEGER,
                 tx_data TEXT,
-                last_tx_timestamp TEXT,
-                created_at INTEGER
+                last_tx_timestamp TEXT
             )
         ''')
         self.conn.commit()
@@ -186,14 +183,11 @@ class BlockchainManager:
                 else:
                     self.app_state.wallets = {
                         wallet[0]: {
-                            "public_key": wallet[1],
-                            "private_key": wallet[2],
-                            "words": wallet[3],
-                            "balance": wallet[4],
-                            "tx_count": wallet[5],
-                            "tx_data": ujson.loads(wallet[6]),
-                            "last_tx_timestamp": wallet[7],
-                            "created_at": wallet[8]
+                            "balance": wallet[1],
+                            "balance_pending": wallet[2],
+                            "tx_count": wallet[3],
+                            "tx_data": ujson.loads(wallet[4]),
+                            "last_tx_timestamp": wallet[5],
                         } for wallet in loaded_wallets
                     }
         except sqlite3.Error as e:
@@ -245,18 +239,15 @@ class BlockchainManager:
         """
         try:
             self.cursor.execute('''
-                INSERT OR REPLACE INTO wallets (address, public_key, private_key, words, balance, tx_count, tx_data, last_tx_timestamp, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO wallets (address, balance, balance_pending, tx_count, tx_data, last_tx_timestamp)
+                VALUES (?, ?, ?, ?, ?, ?)
             ''', (
                 address,
-                wallet['public_key'],
-                wallet['private_key'],
-                wallet['words'],
                 wallet['balance'],
+                wallet['balance_pending'],
                 wallet['tx_count'],
                 ujson.dumps(wallet['tx_data']),
                 wallet['last_tx_timestamp'],
-                wallet['created_at']
             ))
             self.conn.commit()
         except IOError as e:
@@ -270,7 +261,6 @@ class BlockchainManager:
         blockchain_supply = self.app_state.config_store.get('BLOCKCHAIN_SUPPLY', '0')
 
         genesis_transaction = {
-            'timestamp': int(time.time()),
             'nonce': 0,
             'difficulty': 0,
             'validation_time': 0,
@@ -283,7 +273,9 @@ class BlockchainManager:
             'validator': '',
             'amount': blockchain_supply,
             'data': '',
-            'fee': '0'
+            'fee': '0',
+            'timestamp': int(time.time()),
+            'status': True
         }
 
         tx_size = len(ujson.dumps(genesis_transaction).encode())
@@ -321,7 +313,9 @@ class BlockchainManager:
                 "amount": blockchain_supply,
                 "fee": genesis_transaction['fee'],
                 "sender": genesis_transaction['sender'],
-                "receiver": genesis_transaction['receiver']
+                "receiver": genesis_transaction['receiver'],
+                "timestamp": genesis_block['timestamp'],
+                "status": True
             }
             genesis_wallet['balance'] = blockchain_supply
             genesis_wallet['last_tx_timestamp'] = genesis_transaction['timestamp']
@@ -458,40 +452,65 @@ class BlockchainManager:
             validator_rewards = {}
 
             # Update wallets data
+            wallet_template = {
+                "balance": "0",
+                "balance_pending": "0",
+                "tx_count": 0,
+                "tx_data": [],
+                "last_tx_timestamp": ""
+            }
+
+            def update_tx_data(wallet, tx_data):
+                for i, tx in enumerate(wallet['tx_data']):
+                    if tx['txid'] == tx_data['txid']:
+                        wallet['tx_data'][i] = tx_data
+                        return
+                wallet['tx_data'].append(tx_data)
+
             for txn in mined_block['data']:
                 sender_address = txn['sender']
-                sender_wallet = self.app_state.wallets.get(sender_address, {
-                    'balance': '0', 'last_tx_timestamp': 0, 'tx_count': 0, 'tx_data': []
-                })
-            
                 receiver_address = txn['receiver']
-                receiver_wallet = self.app_state.wallets.get(receiver_address, {
-                    'balance': '0', 'last_tx_timestamp': 0, 'tx_count': 0, 'tx_data': []
-                })
                 validator_address = txn['validator']
+
+                # Ensure sender wallet exists
+                if sender_address not in self.app_state.wallets:
+                    self.app_state.wallets[sender_address] = wallet_template.copy()
+                sender_wallet = self.app_state.wallets[sender_address]
+                
+                # Ensure receiver wallet exists
+                if receiver_address not in self.app_state.wallets:
+                    self.app_state.wallets[receiver_address] = wallet_template.copy()
+                receiver_wallet = self.app_state.wallets[receiver_address]
+
                 tx_data = {
-                    "block_index": block['index'],
+                    "block_index": mined_block["index"],
                     "txid": txn['txid'],
                     "hash": txn['hash'],
                     "amount": txn['amount'],
                     "fee": txn['fee'],
                     "sender": txn['sender'],
-                    "receiver": txn['receiver']
+                    "receiver": txn['receiver'],
+                    "timestamp": txn['timestamp'],
+                    "status": txn['status']
                 }
 
                 if sender_wallet:
                     sender_wallet['balance'] = str(int(sender_wallet['balance']) - int(txn['amount']) - int(txn['fee']))
+                    sender_wallet['balance_pending'] = str(int(sender_wallet['balance_pending']) + int(txn['amount']) + int(txn['fee']))
                     sender_wallet['last_tx_timestamp'] = mined_block['timestamp']
-                    sender_wallet['tx_count'] += 1
-                    sender_wallet['tx_data'].append(tx_data)
+                    update_tx_data(sender_wallet, tx_data)
+                    self.app_state.data_store["wallets"][sender_address] = sender_wallet
                     await self.save_blockchain_wallets(sender_address, sender_wallet)
 
                 if receiver_wallet and receiver_wallet != sender_wallet:
                     receiver_wallet['balance'] = str(int(receiver_wallet['balance']) + int(txn['amount']))
+                    receiver_wallet['balance_pending'] = str(int(receiver_wallet['balance_pending']) - int(txn['amount']))
                     receiver_wallet['last_tx_timestamp'] = mined_block['timestamp']
-                    receiver_wallet['tx_count'] += 1
-                    receiver_wallet['tx_data'].append(tx_data)
+                    update_tx_data(receiver_wallet, tx_data)
+                    self.app_state.data_store["wallets"][receiver_address] = receiver_wallet
                     await self.save_blockchain_wallets(receiver_address, receiver_wallet)
+                
+                self.app_state.data_has_changed = True
             
                 if validator_address:
                     if validator_address not in validator_rewards:
@@ -502,7 +521,8 @@ class BlockchainManager:
             genesis_address = self.app_state.config_store['BLOCKCHAIN_CONF']['genesis_address']
             for validator_address, total_reward in validator_rewards.items():
                 validator_data = str({'Validator reward': [txn['hash'] for txn in mined_block['data'] if txn['validator'] == validator_address]})
-                await self.add_txn(genesis_address, validator_address, str(total_reward), validator_data)
+                print("add_validator_reward", validator_data)
+                await self.send_internal_txn(genesis_address, validator_address, str(total_reward), validator_data)
 
             # Remove the request entry from app_state.blockchain_txns_requests
             self.app_state.blockchain_blocks_requests.pop(request_id, None)
@@ -587,7 +607,7 @@ class BlockchainManager:
         genesis_address = self.app_state.config_store['BLOCKCHAIN_CONF']['genesis_address']
         for validator_address, total_reward in validator_rewards.items():
             validator_data = str({'Validator reward': [txn['hash'] for txn in mined_block['data'] if txn['validator'] == validator_address]})
-            await self.add_txn(genesis_address, validator_address, str(total_reward), validator_data)
+            await self.send_internal_txn(genesis_address, validator_address, str(total_reward), validator_data)
 
     def adjust_difficulty(self, validation_time):
         target_time = 5  # Target time per block in seconds
@@ -671,11 +691,12 @@ class BlockchainManager:
             raise
 
         transaction = {
+            'timestamp': int(time.time()),
             'sender': sender,
             'receiver': receiver,
             'amount': str(int(float(amount))),
             'data': encrypted_data,
-            'fee': fee
+            'fee': fee,
         }
 
         txid = await self.hash_data(transaction)
@@ -683,6 +704,7 @@ class BlockchainManager:
         transaction['difficulty'] = self.app_state.config_store['BLOCKCHAIN_CONF']['difficulty']
         transaction['size'] = len(ujson.dumps(transaction).encode())
         transaction['checksum'] = self.calculate_checksum(transaction)
+        transaction['status'] = False
         self.app_state.blockchain_pending_transactions.append(transaction)
 
         # Save pending transactions
@@ -768,37 +790,34 @@ class BlockchainManager:
             encrypted_words = fernet.encrypt(words.encode()).decode()
             encrypted_private_key = fernet.encrypt(private_key.encode()).decode()
 
-            wallet_data = {
+            wallet = {
                 "address": address,
                 "words": words,
                 "private_key": private_key,
                 "public_key": public_key
             }
 
-            encrypted_wallet_data = {
-                "public_key": str(public_key),
-                "private_key": encrypted_private_key,
-                "words": encrypted_words,
+            wallet_data = {
                 "balance": "0",
+                "balance_pending": "0",
                 "tx_count": 0,
                 "tx_data": [],
-                "last_tx_timestamp": "",
-                "created_at": int(time.time())
+                "last_tx_timestamp": ""
             }
 
-            self.app_state.wallets[address] = encrypted_wallet_data
+            self.app_state.wallets[address] = wallet_data
             
             if "wallets" not in self.app_state.data_store:
                 self.app_state.data_store["wallets"] = {}
             
             if address not in self.app_state.data_store["wallets"]:
-                self.app_state.data_store["wallets"][address] = encrypted_wallet_data
+                self.app_state.data_store["wallets"][address] = wallet_data
 
             # Save blockchain wallets
             self.app_state.data_has_changed = True
-            await self.save_blockchain_wallets(address, encrypted_wallet_data)
+            await self.save_blockchain_wallets(address, wallet_data)
 
-            return wallet_data
+            return wallet
         else: 
             return 'Blockchain feature is not active. Use CONFIG SET BLOCKCHAIN 1'
     
@@ -814,17 +833,17 @@ class BlockchainManager:
         if not address:
             return "No valid address found in args"
 
-        encrypted_wallet_data = self.app_state.wallets.get(address)
-        if not encrypted_wallet_data:
+        wallet = self.app_state.wallets.get(address)
+        if not wallet:
             return "Wallet not found"
 
         wallet_data = {
-            "public_key": encrypted_wallet_data.get("public_key"),
-            "balance": encrypted_wallet_data.get("balance"),
-            "tx_count": encrypted_wallet_data.get("tx_count"),
-            "tx_data": encrypted_wallet_data.get("tx_data"),
-            "last_tx_timestamp": encrypted_wallet_data.get("last_tx_timestamp"),
-            "created_at": encrypted_wallet_data.get("created_at")
+            "balance": wallet.get("balance"),
+            "balance_pending": wallet.get("balance_pending"),
+            "tx_count": wallet.get("tx_count"),
+            "tx_data": wallet.get("tx_data"),
+            "last_tx_timestamp": wallet.get("last_tx_timestamp"),
+            "created_at": wallet.get("created_at")
         }
 
         return wallet_data
@@ -862,12 +881,12 @@ class BlockchainManager:
         if not address:
             return "No valid address found in args"
 
-        encrypted_wallet_data = self.app_state.wallets.get(address)
-        if not encrypted_wallet_data:
+        wallet = self.app_state.wallets.get(address)
+        if not wallet:
             return "Wallet not found"
 
         wallet_data = {
-            "balance": encrypted_wallet_data.get("balance"),
+            "balance": wallet.get("balance"),
         }
 
         return wallet_data
@@ -1009,26 +1028,161 @@ class BlockchainManager:
         if request_id in self.app_state.blockchain_txns_requests:
             self.app_state.blockchain_txns_requests[request_id] = parsed_result
 
+    async def send_internal_txn(self, sender, receiver, amount, data, fee="0"):
+        try:
+            # Retrieve the sender wallet from the cache
+            sender_wallet = self.app_state.wallets.get(sender)
+            if not sender_wallet:
+                sender_wallet = {
+                    "balance": "0",
+                    "balance_pending": "0",
+                    "tx_count": 0,
+                    "tx_data": [],
+                    "last_tx_timestamp": ""
+                }
+
+            # Retrieve or initialize the receiver wallet from the cache
+            receiver_wallet = self.app_state.wallets.get(receiver)
+            if not receiver_wallet:
+                receiver_wallet = {
+                    "balance": "0",
+                    "balance_pending": "0",
+                    "tx_count": 0,
+                    "tx_data": [],
+                    "last_tx_timestamp": ""
+                }
+
+            # Convert the amount and fee with decimal multiplier
+            blockchain_decimal = int(self.app_state.config_store['BLOCKCHAIN_DECIMAL'])
+            multiplier = 10 ** blockchain_decimal
+            amount = int(float(amount) * multiplier)
+            fee = int(float(fee) * multiplier)
+
+            # Calculate the available balance by considering the balance_pending
+            balance = int(sender_wallet['balance'])
+            balance_pending = int(sender_wallet.get('balance_pending', '0'))
+        
+            # Adjust the available balance if balance_pending is negative
+            if balance_pending < 0:
+                available_balance = balance + balance_pending
+            else:
+                available_balance = balance
+
+            # Check if the sender has sufficient available balance
+            if available_balance < int(amount) + int(fee):
+                return {"error": "Insufficient balance"}
+
+            # Create and add the transaction
+            transaction = await self.add_txn(sender, receiver, amount, data, fee)
+            txid = {"txid": transaction['txid']}
+
+            # Update the sender wallet balance and pending balance
+            sender_wallet['balance'] = str(balance - int(amount) - int(fee))
+            sender_wallet['balance_pending'] = str(balance_pending - int(amount) - int(fee))
+            sender_wallet['tx_count'] += 1
+            sender_wallet['tx_data'].append(transaction)
+            sender_wallet['last_tx_timestamp'] = transaction['timestamp']
+            
+            # Save the updated sender back to the cache
+            self.app_state.wallets[sender] = sender_wallet
+            self.app_state.data_store["wallets"][sender] = sender_wallet
+            await self.save_blockchain_wallets(sender, sender_wallet)
+
+            # Update the receiver wallet pending balance
+            if sender != receiver:
+                receiver_balance_pending = int(receiver_wallet['balance_pending'])
+                receiver_wallet['balance_pending'] = str(receiver_balance_pending + int(amount))
+                receiver_wallet['tx_count'] += 1
+                receiver_wallet['tx_data'].append(transaction)
+                receiver_wallet['last_tx_timestamp'] = transaction['timestamp']
+
+                # Save the updated receiver back to the cache
+                self.app_state.wallets[receiver] = receiver_wallet
+                self.app_state.data_store["wallets"][receiver] = receiver_wallet
+
+            #Save the updated wallets back to sqlite
+            self.app_state.data_has_changed = True
+            await self.save_blockchain_wallets(receiver, receiver_wallet)
+
+            return txid
+
+        except Exception as e:
+            print(f"Error sending transaction: {e}")
+            return f"Error sending transaction: {e}"
+    
     async def send_txn(self, private_key, receiver, amount, data, fee="0"):
         try:
             # Generate public key from private key
             sk = SigningKey.from_string(bytes.fromhex(private_key), curve=SECP256k1)
             vk = sk.get_verifying_key()
             public_key = vk.to_string("uncompressed").hex()
-            address = await self.generate_address(bytes.fromhex(public_key))
+            sender = await self.generate_address(bytes.fromhex(public_key))
 
             # Retrieve the sender wallet from the cache
-            sender_wallet = self.app_state.wallets.get(address)
+            sender_wallet = self.app_state.wallets.get(sender)
             if not sender_wallet:
-                return "Sender wallet not found"
+                return {"error": "Sender wallet not found"}
 
-            # Check if the sender has sufficient balance
-            if int(sender_wallet['balance']) < int(amount) + int(fee):
-                return "Insufficient balance"
+            # Retrieve or initialize the receiver wallet from the cache
+            receiver_wallet = self.app_state.wallets.get(receiver)
+            if not receiver_wallet:
+                receiver_wallet = {
+                    "balance": "0",
+                    "balance_pending": "0",
+                    "tx_count": 0,
+                    "tx_data": [],
+                    "last_tx_timestamp": ""
+                }
+
+            # Convert the amount and fee with decimal multiplier
+            blockchain_decimal = int(self.app_state.config_store['BLOCKCHAIN_DECIMAL'])
+            multiplier = 10 ** blockchain_decimal
+            amount = int(float(amount) * multiplier)
+            fee = int(float(fee) * multiplier)
+
+            # Calculate the available balance by considering the balance_pending
+            balance = int(sender_wallet['balance'])
+            balance_pending = int(sender_wallet.get('balance_pending', '0'))
+        
+            # Adjust the available balance if balance_pending is negative
+            if balance_pending < 0:
+                available_balance = balance + balance_pending
+            else:
+                available_balance = balance
+
+            # Check if the sender has sufficient available balance
+            if available_balance < int(amount) + int(fee):
+                return {"error": "Insufficient balance"}
 
             # Create and add the transaction
-            transaction = await self.add_txn(address, receiver, amount, data, fee)
-            txid = { "txid": transaction['txid'] }
+            transaction = await self.add_txn(sender, receiver, amount, data, fee)
+            txid = {"txid": transaction['txid']}
+
+            # Update the sender wallet balance and pending balance
+            sender_wallet['balance'] = str(balance - int(amount) - int(fee))
+            sender_wallet['balance_pending'] = str(balance_pending - int(amount) - int(fee))
+            sender_wallet['tx_count'] += 1
+            sender_wallet['tx_data'].append(transaction)
+            sender_wallet['last_tx_timestamp'] = transaction['timestamp']
+            await self.save_blockchain_wallets(sender, sender_wallet)
+
+            # Update the receiver wallet pending balance
+            receiver_balance_pending = int(receiver_wallet['balance_pending'])
+            receiver_wallet['balance_pending'] = str(receiver_balance_pending + int(amount))
+            receiver_wallet['tx_count'] += 1
+            receiver_wallet['tx_data'].append(transaction)
+            receiver_wallet['last_tx_timestamp'] = transaction['timestamp']
+
+            # Save the updated wallets back to the cache
+            self.app_state.wallets[sender] = sender_wallet
+            self.app_state.wallets[receiver] = receiver_wallet
+            self.app_state.data_store["wallets"][sender] = sender_wallet
+            self.app_state.data_store["wallets"][receiver] = receiver_wallet
+            self.app_state.data_has_changed = True
+
+            #Save the updated wallets back to sqlite
+            await self.save_blockchain_wallets(receiver, receiver_wallet)
+
             return txid
 
         except Exception as e:

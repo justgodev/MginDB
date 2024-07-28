@@ -166,8 +166,8 @@ class WebSocketSession:
                 await self.retry_message(message)
 
     async def retry_message(self, message):
-        retry_attempts = 3
-        delay = 1
+        retry_attempts = 150
+        delay = 2
         for attempt in range(retry_attempts):
             try:
                 await self.process_message(message)

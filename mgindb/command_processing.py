@@ -110,7 +110,7 @@ class CommandProcessor:
             'RESOLVE_TXNS': self.blockchain_manager.resolve_txns,
             'SUBMIT_TXNS_RESULT': self.blockchain_manager.submit_txns_result,
             'SEND_TXN': self.blockchain_manager.send_txn,
-            'ADD_TXN': self.blockchain_manager.add_txn,
+            'SEND_INTERNAL_TXN': self.blockchain_manager.send_internal_txn,
             'SUBMIT_TXN': self.blockchain_manager.submit_txn,
             'UPLOAD_FILE': self.upload_manager.save_file,
             'READ_FILE': self.upload_manager.read_file,
@@ -156,10 +156,10 @@ class CommandProcessor:
                         order_value = args.split('ORDERBY')[1].strip().split()[0].strip('()')
                         options['order'] = order_value
                     return await func(options)
-                elif command == 'ADD_TXN':
+                elif command == 'SEND_INTERNAL_TXN':
                     parts = args.split(' ', 4)
                     if len(parts) != 5:
-                        return "Error: Invalid number of arguments for ADD_TXN"
+                        return "Error: Invalid number of arguments for SEND_INTERNAL_TXN"
                     sender, receiver, amount, data, fee = parts
                     return await func(sender, receiver, amount, data, fee)
                 elif command == 'SEND_TXN':
@@ -185,10 +185,10 @@ class CommandProcessor:
                 elif command == 'VERIFY_2FA':
                     secret, code = args.split(' ')
                     return await self.run_in_executor('thread', func, secret, code)
-                elif command == 'ADD_TXN':
+                elif command == 'SEND_INTERNAL_TXN':
                     parts = args.split(' ', 4)
                     if len(parts) != 5:
-                        return "Error: Invalid number of arguments for ADD_TXN"
+                        return "Error: Invalid number of arguments for SEND_INTERNAL_TXN"
                     sender, receiver, amount, data, fee = parts
                     return await self.run_in_executor('thread', func, sender, receiver, amount, data, fee)
                 elif command == 'SUBMIT_TXNS_RESULT' or command == 'SUBMIT_BLOCK':
@@ -399,20 +399,20 @@ class DataCommandHandler:
         sharding_active = await self.processor.sharding_manager.has_sharding()  # Check if sharding is active
         for command in commands:
             # Extract wallet if present
-            wallet_sender_match = re.search(r"FOR WALLET:([A-Za-z0-9]+)", command.strip())  # Match the wallet pattern
-            wallet_receiver_match = re.search(r"TO WALLET:([A-Za-z0-9]+)", command.strip())  # Match the wallet pattern
+            sender_address_match = re.search(r"SENDER:([A-Za-z0-9]+)", command.strip())  # Match the wallet pattern
+            receiver_address_match = re.search(r"RECEIVER:([A-Za-z0-9]+)", command.strip())  # Match the wallet pattern
 
-            if wallet_sender_match:
-                wallet_sender = wallet_sender_match.group(1)  # Extract the wallet value
-                command = re.sub(r"FOR WALLET:[A-Za-z0-9]+", "", command.strip())  # Remove the wallet part from the command
+            if sender_address_match:
+                sender_address = sender_address_match.group(1)  # Extract the wallet value
+                command = re.sub(r"SENDER:[A-Za-z0-9]+", "", command.strip())  # Remove the wallet part from the command
             else:
-                wallet_sender = None  # No wallet found
+                sender_address = None  # No wallet found
             
-            if wallet_receiver_match:
-                wallet_receiver = wallet_receiver_match.group(1)  # Extract the wallet value
-                command = re.sub(r"TO WALLET:[A-Za-z0-9]+", "", command.strip())  # Remove the wallet part from the command
+            if receiver_address_match:
+                receiver_address = receiver_address_match.group(1)  # Extract the wallet value
+                command = re.sub(r"RECEIVER:[A-Za-z0-9]+", "", command.strip())  # Remove the wallet part from the command
             else:
-                wallet_receiver = None  # No wallet found
+                receiver_address = None  # No wallet found
             
             # Extract command
             match = re.match(r"([^ ]+) (.+)", command.strip())  # Match the command pattern
@@ -458,23 +458,26 @@ class DataCommandHandler:
             
             # Add transaction to the blockchain
             if await self.processor.blockchain_manager.has_blockchain():
-                sender = wallet_sender
-                receiver = wallet_receiver
-                amount = "0"
-                data = "TEST"
-                fee = "0"
-                
-                if await self.processor.blockchain_manager.is_blockchain_master():
-                    asyncio.create_task(self.processor.blockchain_manager.add_txn(sender, receiver, amount, data, fee))
-                else:
-                    command = f'ADD_TXN {sender} {receiver} {amount} {data} {fee}'
-                    await self.processor.forward_to_blockchain(command)
+                await self.add_tx_to_blockchain(sender_address, receiver_address, command)
 
             if await self.processor.replication_manager.has_replication_is_replication_master():
                 replication_command = f"SET {':'.join(parts)} {value}"
                 await self.processor.replication_manager.send_command_to_slaves(replication_command)  # Replicate the command to slaves
 
         return '\n'.join(responses)
+    
+    async def add_tx_to_blockchain(self, sender_address, receiver_address, command):
+        sender = sender_address
+        receiver = receiver_address
+        amount = "0"
+        data = ""
+        fee = "0"
+                
+        if await self.processor.blockchain_manager.is_blockchain_master():
+            asyncio.create_task(self.processor.blockchain_manager.send_internal_txn(sender, receiver, amount, data, fee))
+        else:
+            command = f'SEND_INTERNAL_TXN {sender} {receiver} {amount} {data} {fee}'
+            await self.processor.forward_to_blockchain(command)
 
     async def set_keys_wildcard(self, base_path, last_key, value, data_store):
         """Sets keys using wildcard in the base path."""
