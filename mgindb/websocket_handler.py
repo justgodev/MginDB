@@ -6,17 +6,88 @@ from .app_state import AppState
 from .command_processing import CommandProcessor
 
 class WebSocketManager:
-    def __init__(self, thread_executor, process_executor):
-        """Initialize WebSocketManager with a command processor."""
-        self.command_processor = CommandProcessor(thread_executor, process_executor)
-    
+    def __init__(self, thread_executor, process_executor, blockchain_manager):
+        self.command_processor = CommandProcessor(thread_executor, process_executor, self)
+        self.sessions = {}  # Store sessions to manage multiple connections
+        self.blockchain_manager = blockchain_manager
+        self.blockchain_websocket = None
+
     async def handle_websocket(self, websocket, path):
-        """Handle a new WebSocket connection."""
-        await WebSocketSession(websocket, self.command_processor).start()
+        session = WebSocketSession(websocket, self.command_processor)
+        self.sessions[session.sid] = session
+        await session.start()
+        del self.sessions[session.sid]  # Clean up session after it's done
+
+    async def start_blockchain_websocket(self):
+        print("Starting Blockchain WebSocket to master node...")
+        self.blockchain_websocket = await websockets.connect(
+            "wss://master.mgindb.com",
+            ping_interval=None,
+            ping_timeout=None,
+            max_size=None,
+            subprotocols=["graphql-ws"]
+        )
+        print("Connected to master node at master.mgindb.com")
+        await self.authenticate_blockchain_websocket()
+        asyncio.create_task(self.handle_blockchain_websocket())
+
+    async def authenticate_blockchain_websocket(self):
+        auth_message = ujson.dumps({
+            'username': "",
+            'password': ""
+        })
+        
+        print("Authenticating to Blockchain WebSocket")
+        await self.blockchain_websocket.send(auth_message)
+        
+        auth_response = await self.blockchain_websocket.recv()
+        
+        if auth_response == 'MginDB server connected... Welcome!':
+            print('Listening to Blockchain WebSocket')
+        else:
+            raise Exception('Authentication failed for Blockchain WebSocket')
+
+    async def handle_blockchain_websocket(self):
+        try:
+            async for message in self.blockchain_websocket:
+                print(f'Blockchain WebSocket message received: {message}')
+                if message:
+                    await self.process_blockchain_message(message)
+        except websockets.exceptions.ConnectionClosed:
+            print("Blockchain WebSocket connection closed.")
+        except Exception as e:
+            print(f"Error in Blockchain WebSocket connection: {e}")
+
+    async def process_blockchain_message(self, message):
+        try:
+            print(f"Processing blockchain message: {message}")
+            for session in self.sessions.values():
+                await session.websocket.send(message)
+                print(f"Message forwarded to main WebSocket session: {message}")
+        except Exception as e:
+            print(f"Error processing blockchain message: {e}")
+
+    async def send_to_blockchain_websocket(self, message):
+        if self.blockchain_websocket:
+            try:
+                await self.blockchain_websocket.send(message)
+                print(f"Message sent to Blockchain WebSocket: {message}")
+            except Exception as e:
+                print(f"Failed to send message to Blockchain WebSocket: {e}")
+                return f"Error: {e}"
+        else:
+            return "ERROR: Blockchain WebSocket is not connected."
+
+    async def close_blockchain_websocket(self):
+        if self.blockchain_websocket:
+            try:
+                await self.blockchain_websocket.close()
+                print("Blockchain WebSocket connection closed.")
+            except Exception as e:
+                print(f"Failed to close Blockchain WebSocket: {e}")
 
 class WebSocketSession:
     def __init__(self, websocket, command_processor):
-        """Initialize WebSocketSession with a WebSocket connection and a command processor."""
         self.websocket = websocket
         self.command_processor = command_processor
         self.sid = str(uuid.uuid4())
@@ -25,11 +96,10 @@ class WebSocketSession:
             'websocket': websocket,
             'subscribed_keys': set(),
         }
-        self.message_queue = asyncio.Queue(maxsize=100)  # Limit the queue size to avoid memory issues
+        self.message_queue = asyncio.Queue(maxsize=1000)  # Increase the queue size
         self.stop_event = asyncio.Event()
 
     async def start(self):
-        """Start the WebSocket session."""
         try:
             print(f"Starting WebSocket session with ID: {self.sid}")
             await self.authenticate()
@@ -44,7 +114,6 @@ class WebSocketSession:
             await self.clean_up()
 
     async def authenticate(self):
-        """Authenticate the WebSocket connection."""
         expected_username = self.app_state.config_store.get('USERNAME', '')
         expected_password = self.app_state.config_store.get('PASSWORD', '')
 
@@ -61,7 +130,6 @@ class WebSocketSession:
                 break
 
     async def check_credentials(self, message, expected_username, expected_password):
-        """Check the provided credentials against expected values."""
         try:
             auth_data = ujson.loads(message)
             user_provided = auth_data.get('username', '')
@@ -73,7 +141,6 @@ class WebSocketSession:
             return False
 
     async def listen_for_messages(self):
-        """Listen for messages from the WebSocket and add them to the queue."""
         try:
             async for message in self.websocket:
                 print(f'Socket Message received: {message}')
@@ -89,14 +156,28 @@ class WebSocketSession:
             await self.clean_up()
 
     async def process_messages(self):
-        """Process messages from the queue."""
         while not self.stop_event.is_set() or not self.message_queue.empty():
-            message = await self.message_queue.get()
-            print(f'Message dequeued for processing: {message}')
-            await self.process_message(message)
+            try:
+                message = await self.message_queue.get()
+                print(f'Message dequeued for processing: {message}')
+                asyncio.create_task(self.process_message(message))
+            except Exception as e:
+                print(f"Error processing message: {e}")
+                await self.retry_message(message)
+
+    async def retry_message(self, message):
+        retry_attempts = 3
+        delay = 1
+        for attempt in range(retry_attempts):
+            try:
+                await self.process_message(message)
+                return
+            except Exception as e:
+                print(f"Retry {attempt + 1}/{retry_attempts} failed for message: {message}")
+                await asyncio.sleep(delay)
+        print(f"Failed to process message after {retry_attempts} attempts: {message}")
 
     async def process_message(self, message):
-        """Process a single message."""
         try:
             print(f"Processing message: {message}")
             command = asyncio.create_task(self.command_processor.process_command(message, self.sid, self.websocket))
@@ -111,7 +192,6 @@ class WebSocketSession:
             print(f'Message processing completed: {message}')
 
     async def clean_up(self):
-        """Clean up the session and remove subscriptions."""
         try:
             print(f"Starting clean_up for session ID: {self.sid}")
             session = self.app_state.sessions.pop(self.sid, None)
@@ -146,5 +226,4 @@ class WebSocketSession:
 
 # Original function to handle websockets using the new WebSocketManager
 async def handle_websocket(websocket, path, thread_executor, process_executor):
-    """Handle WebSocket connections using WebSocketManager."""
     await WebSocketManager(thread_executor, process_executor).handle_websocket(websocket, path)

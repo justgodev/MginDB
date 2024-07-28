@@ -20,10 +20,11 @@ from .upload_manager import UploadManager  # Upload management
 from .two_factor_manager import TwoFactorManager  # Two Factor management
 
 class CommandProcessor:
-    def __init__(self, thread_executor, process_executor):
+    def __init__(self, thread_executor, process_executor, websocket_manager):
         self.app_state = AppState()
         self.thread_executor = thread_executor
         self.process_executor = process_executor
+        self.websocket_manager = websocket_manager  # Added websocket manager
         # Initialize other managers and handlers
         self.updater = UpdateManager()
         self.scheduler_manager = SchedulerManager()
@@ -109,11 +110,12 @@ class CommandProcessor:
             'RESOLVE_TXNS': self.blockchain_manager.resolve_txns,
             'SUBMIT_TXNS_RESULT': self.blockchain_manager.submit_txns_result,
             'SEND_TXN': self.blockchain_manager.send_txn,
+            'ADD_TXN': self.blockchain_manager.add_txn,
             'SUBMIT_TXN': self.blockchain_manager.submit_txn,
             'UPLOAD_FILE': self.upload_manager.save_file,
             'READ_FILE': self.upload_manager.read_file,
             'NEW_2FA': self.two_factor_manager.generate,
-            'VERIFY_2FA': self.two_factor_manager.verify,
+            'VERIFY_2FA': self.two_factor_manager.verify
         }
 
         if command in commands:
@@ -154,6 +156,12 @@ class CommandProcessor:
                         order_value = args.split('ORDERBY')[1].strip().split()[0].strip('()')
                         options['order'] = order_value
                     return await func(options)
+                elif command == 'ADD_TXN':
+                    parts = args.split(' ', 4)
+                    if len(parts) != 5:
+                        return "Error: Invalid number of arguments for ADD_TXN"
+                    sender, receiver, amount, data, fee = parts
+                    return await func(sender, receiver, amount, data, fee)
                 elif command == 'SEND_TXN':
                     parts = args.split(' ', 4)
                     if len(parts) < 4:
@@ -177,6 +185,12 @@ class CommandProcessor:
                 elif command == 'VERIFY_2FA':
                     secret, code = args.split(' ')
                     return await self.run_in_executor('thread', func, secret, code)
+                elif command == 'ADD_TXN':
+                    parts = args.split(' ', 4)
+                    if len(parts) != 5:
+                        return "Error: Invalid number of arguments for ADD_TXN"
+                    sender, receiver, amount, data, fee = parts
+                    return await self.run_in_executor('thread', func, sender, receiver, amount, data, fee)
                 elif command == 'SUBMIT_TXNS_RESULT' or command == 'SUBMIT_BLOCK':
                     request_id, data = args.split(' ', 1)
                     return await self.run_in_executor('thread', func, request_id, data)
@@ -196,6 +210,20 @@ class CommandProcessor:
                     return await self.run_in_executor('thread', func, args)
         else:
             return None
+
+    async def handle_result(self, result):
+        """Handles the result of a command execution."""
+        if asyncio.iscoroutine(result):
+            return await result
+        else:
+            return result
+
+    async def forward_to_blockchain(self, command):
+        if self.websocket_manager.blockchain_websocket:
+            result = await self.websocket_manager.send_to_blockchain_websocket(command)
+            return result
+        else:
+            return "ERROR: Secondary WebSocket is not connected."
 
     async def handle_result(self, result):
         """Handles the result of a command execution."""
@@ -432,8 +460,15 @@ class DataCommandHandler:
             if await self.processor.blockchain_manager.has_blockchain():
                 sender = wallet_sender
                 receiver = wallet_receiver
-                data = str({'command': 'SET', 'key': key_pattern, 'value': value})
-                asyncio.create_task(self.processor.blockchain_manager.add_transaction(sender, receiver, 0, data))
+                amount = "0"
+                data = "TEST"
+                fee = "0"
+                
+                if await self.processor.blockchain_manager.is_blockchain_master():
+                    asyncio.create_task(self.processor.blockchain_manager.add_txn(sender, receiver, amount, data, fee))
+                else:
+                    command = f'ADD_TXN {sender} {receiver} {amount} {data} {fee}'
+                    await self.processor.forward_to_blockchain(command)
 
             if await self.processor.replication_manager.has_replication_is_replication_master():
                 replication_command = f"SET {':'.join(parts)} {value}"

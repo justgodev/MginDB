@@ -24,6 +24,7 @@
         "10.0.0.251"
     ],
     "BLOCKCHAIN": "1",
+    "BLOCKCHAIN_TYPE": "SLAVE",
     "BLOCKCHAIN_DECIMAL": "8",
     "BLOCKCHAIN_SUPPLY": "400000000000000000",
     "BLOCKCHAIN_MAX_SUPPLY": "400000000000000000",
@@ -33,10 +34,10 @@
     "BLOCKCHAIN_BLOCK_MAX_SIZE": "10",
     "BLOCKCHAIN_BLOCK_AUTO_CREATION_INTERVAL": "120",
     "BLOCKCHAIN_CONF": {
-        "genesis_address": "MpJgGcMvjrucFaUKQGE1ygzdkj6qDACg7m",
+        "genesis_address": "MXcRAtcbnGKLuYYDwEWApDVZhTh8aVHaxe",
         "chain_length": 1,
-        "previous_hash": "4605bad6b2f2ed557c5fca408940f6432e6419a7463bfd34667fccfc04145d45",
-        "latest_block": 1721870044,
+        "previous_hash": "87758e8d2b1072b72d38253cd37f3ba49431df10fe4037e45f934cecd30b544e",
+        "latest_block": 1722100159,
         "validation_time": 0,
         "difficulty": 1,
         "fee": "100000000"

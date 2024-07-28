@@ -25,8 +25,6 @@ class BlockchainManager:
         self.pending_transactions_file = PENDING_TRANSACTIONS_FILE
         self.sub_pub_manager = SubPubManager()
         self.last_block_time = time.time()
-        self.block_max_size = self.app_state.config_store.get('BLOCKCHAIN_BLOCK_MAX_SIZE')
-        self.sync_chunks = self.app_state.config_store.get('BLOCKCHAIN_SYNC_CHUNKS')
         self._init_blockchain()
 
     def _init_blockchain(self):
@@ -67,6 +65,8 @@ class BlockchainManager:
 
     async def has_blockchain(self):
         return self.app_state.config_store.get('BLOCKCHAIN') == '1'
+    async def is_blockchain_master(self):
+        return self.app_state.config_store.get('BLOCKCHAIN_TYPE') == 'MASTER'
 
     async def blockchain_routines(self):
             block_auto_creation_interval = self.app_state.config_store.get('BLOCKCHAIN_BLOCK_AUTO_CREATION_INTERVAL')
@@ -314,7 +314,15 @@ class BlockchainManager:
 
         genesis_wallet = self.app_state.wallets.get(wallet.get('address'))
         if genesis_wallet:
-            tx_data = f"{genesis_transaction['txid']}:{genesis_block['index']}"
+            tx_data = {
+                "block_index": genesis_block['index'],
+                "txid": genesis_transaction['txid'],
+                "hash": genesis_transaction['hash'],
+                "amount": blockchain_supply,
+                "fee": genesis_transaction['fee'],
+                "sender": genesis_transaction['sender'],
+                "receiver": genesis_transaction['receiver']
+            }
             genesis_wallet['balance'] = blockchain_supply
             genesis_wallet['last_tx_timestamp'] = genesis_transaction['timestamp']
             genesis_wallet['tx_count'] += 1
@@ -375,7 +383,7 @@ class BlockchainManager:
                 self.save_blockchain_pending_transactions()
             
             # Tx per block
-            if len(self.app_state.blockchain_mempool) >= int(self.block_max_size):
+            if len(self.app_state.blockchain_mempool) >= int(self.app_state.config_store.get('BLOCKCHAIN_BLOCK_MAX_SIZE')):
                 await self.send_block_for_mining()
             
             return ujson.dumps({
@@ -452,11 +460,24 @@ class BlockchainManager:
             # Update wallets data
             for txn in mined_block['data']:
                 sender_address = txn['sender']
-                sender_wallet = self.app_state.wallets.get(sender_address)
+                sender_wallet = self.app_state.wallets.get(sender_address, {
+                    'balance': '0', 'last_tx_timestamp': 0, 'tx_count': 0, 'tx_data': []
+                })
+            
                 receiver_address = txn['receiver']
-                receiver_wallet = self.app_state.wallets.get(receiver_address)
+                receiver_wallet = self.app_state.wallets.get(receiver_address, {
+                    'balance': '0', 'last_tx_timestamp': 0, 'tx_count': 0, 'tx_data': []
+                })
                 validator_address = txn['validator']
-                tx_data = f"{txn['txid']}:{block['index']}"
+                tx_data = {
+                    "block_index": block['index'],
+                    "txid": txn['txid'],
+                    "hash": txn['hash'],
+                    "amount": txn['amount'],
+                    "fee": txn['fee'],
+                    "sender": txn['sender'],
+                    "receiver": txn['receiver']
+                }
 
                 if sender_wallet:
                     sender_wallet['balance'] = str(int(sender_wallet['balance']) - int(txn['amount']) - int(txn['fee']))
@@ -481,7 +502,7 @@ class BlockchainManager:
             genesis_address = self.app_state.config_store['BLOCKCHAIN_CONF']['genesis_address']
             for validator_address, total_reward in validator_rewards.items():
                 validator_data = str({'Validator reward': [txn['hash'] for txn in mined_block['data'] if txn['validator'] == validator_address]})
-                await self.add_transaction(genesis_address, validator_address, str(total_reward), validator_data)
+                await self.add_txn(genesis_address, validator_address, str(total_reward), validator_data)
 
             # Remove the request entry from app_state.blockchain_txns_requests
             self.app_state.blockchain_blocks_requests.pop(request_id, None)
@@ -531,9 +552,15 @@ class BlockchainManager:
         # Update wallets data
         for txn in mined_block['data']:
             sender_address = txn['sender']
-            sender_wallet = self.app_state.wallets.get(sender_address)
+            sender_wallet = self.app_state.wallets.get(sender_address, {
+                'balance': '0', 'last_tx_timestamp': 0, 'tx_count': 0, 'tx_data': []
+            })
+            
             receiver_address = txn['receiver']
-            receiver_wallet = self.app_state.wallets.get(receiver_address)
+            receiver_wallet = self.app_state.wallets.get(receiver_address, {
+                'balance': '0', 'last_tx_timestamp': 0, 'tx_count': 0, 'tx_data': []
+            })
+            
             validator_address = txn['validator']
             tx_data = f"{txn['txid']}:{block['index']}"
 
@@ -560,7 +587,7 @@ class BlockchainManager:
         genesis_address = self.app_state.config_store['BLOCKCHAIN_CONF']['genesis_address']
         for validator_address, total_reward in validator_rewards.items():
             validator_data = str({'Validator reward': [txn['hash'] for txn in mined_block['data'] if txn['validator'] == validator_address]})
-            await self.add_transaction(genesis_address, validator_address, str(total_reward), validator_data)
+            await self.add_txn(genesis_address, validator_address, str(total_reward), validator_data)
 
     def adjust_difficulty(self, validation_time):
         target_time = 5  # Target time per block in seconds
@@ -604,7 +631,7 @@ class BlockchainManager:
                 return False
         return True
 
-    async def add_transaction(self, sender, receiver, amount="0", data="", fee="0"):
+    async def add_txn(self, sender, receiver, amount="0", data="", fee="0"):
         from .scheduler import SchedulerManager  # Scheduler management
         self.scheduler_manager = SchedulerManager()  # Manages the scheduler
 
@@ -815,8 +842,7 @@ class BlockchainManager:
                 public_key = vk.to_string("uncompressed").hex()
                 address = await self.generate_address(bytes.fromhex(public_key))
 
-            wallet_data = self.app_state.wallets.get(address)
-            if wallet_data:
+            if address:
                 return {"status": "success", "address": address}
             else:
                 return {"status": "error", "message": "Wallet not found"}
@@ -1001,7 +1027,7 @@ class BlockchainManager:
                 return "Insufficient balance"
 
             # Create and add the transaction
-            transaction = await self.add_transaction(address, receiver, amount, data, fee)
+            transaction = await self.add_txn(address, receiver, amount, data, fee)
             txid = { "txid": transaction['txid'] }
             return txid
 

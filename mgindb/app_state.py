@@ -40,6 +40,7 @@ class AppState:
             cls.data_store_key_command_mapping = {}
 
             # Blockchain requests
+            cls.blockchain_requests = {}
             cls.blockchain_blocks_requests = {}
             cls.blockchain_txns_requests = {}
 

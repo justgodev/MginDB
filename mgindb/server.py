@@ -38,6 +38,8 @@ class ServerManager:
         self.thread_executor = ThreadPoolExecutor(max_workers=num_cores)  # Thread pool for I/O-bound tasks
         self.process_executor = ProcessPoolExecutor(max_workers=num_cores)  # Process pool for CPU-bound tasks
 
+        self.websocket_manager = WebSocketManager(self.thread_executor, self.process_executor, self.blockchain_manager)
+
     async def start_server(self):
         """
         Asynchronous function to start the server.
@@ -83,14 +85,16 @@ class ServerManager:
 
             # Load blockchain manager
             if await self.blockchain_manager.has_blockchain():
-                print("Loading blockchain...")
-                await self.blockchain_manager.load_blockchain()  # Load blockchain asynchronously
+                print('is blockchain master', await self.blockchain_manager.is_blockchain_master())
+                if await self.blockchain_manager.is_blockchain_master():
+                    print("Loading blockchain...")
+                    await self.blockchain_manager.load_blockchain()  # Load blockchain asynchronously
 
-                print("Loading blockchain pending transactions...")
-                await self.blockchain_manager.load_blockchain_pending_transactions()  # Load pending transactions asynchronously
+                    print("Loading blockchain pending transactions...")
+                    await self.blockchain_manager.load_blockchain_pending_transactions()  # Load pending transactions asynchronously
 
-                print("Loading blockchain wallets...")
-                await self.blockchain_manager.load_blockchain_wallets()  # Load wallets asynchronously
+                    print("Loading blockchain wallets...")
+                    await self.blockchain_manager.load_blockchain_wallets()  # Load wallets asynchronously
 
             # Load indices
             print("Loading indices...")  # Print message indicating indices loading
@@ -128,15 +132,22 @@ class ServerManager:
             host = self.app_state.config_store.get('HOST')  # Get host from config
             port = self.app_state.config_store.get('PORT')  # Get port from config
             
-            websocket_manager = WebSocketManager(self.thread_executor, self.process_executor)  # Create an instance of WebSocketManager
-            await websockets.serve(websocket_manager.handle_websocket, host, port, max_size=None)  # Start the WebSocket server
+            await websockets.serve(self.websocket_manager.handle_websocket, host, port, max_size=None)  # Start the WebSocket server
             print(f"WebSocket serving on {host}:{port}")  # Print message with WebSocket server details
+
+            # Start Blockchain Websocket connection to the master node if has blockchain
+            if await self.blockchain_manager.has_blockchain():
+                if not await self.blockchain_manager.is_blockchain_master():
+                    await self.websocket_manager.start_blockchain_websocket()
 
             # Wait for stop signal
             try:
                 await stop_event.wait()  # Wait for the stop event
             except Exception as e:
                 print(e)  # Print any exceptions that occur
+            finally:
+                # Ensure the Blockchain Websocket is closed during shutdown
+                await self.websocket_manager.close_blockchain_websocket()
 
         except Exception as e:
             print(f"Failed to start MginDB: {e}")  # Print error message if server fails to start
@@ -151,7 +162,7 @@ class ServerManager:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self.thread_executor, func, *args)
 
-if __name__ == '__main__':
+def main():
     # Register signal handlers for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)  # Handle SIGINT signal
     signal.signal(signal.SIGTERM, signal_handler)  # Handle SIGTERM signal
@@ -163,3 +174,6 @@ if __name__ == '__main__':
         pass  # Ignore keyboard interrupt and connection aborted errors
     except Exception as e:
         print(f"Failed to start MginDB: {e}")  # Print error message if server fails to start
+
+if __name__ == '__main__':
+    main()

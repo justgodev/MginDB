@@ -26,6 +26,7 @@ config = {
     "SHARDING_BATCH_SIZE": "500",  # Default batch size for sharding
     "SHARDS": [],  # List of shards
     "BLOCKCHAIN": "0",  # Blockchain
+    "BLOCKCHAIN_TYPE": "",  # Blockchain Type (MASTER OR SLAVE)
     "BLOCKCHAIN_DECIMAL": "8",  # Blockchain decimal
     "BLOCKCHAIN_SUPPLY": "",  # Blockchain supply
     "BLOCKCHAIN_MAX_SUPPLY": "",  # Blockchain max supply
