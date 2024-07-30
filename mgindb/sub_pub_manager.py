@@ -1,5 +1,6 @@
 from .app_state import AppState  # Importing AppState class from app_state module
 import ujson  # Module for JSON operations
+import asyncio
 
 class Subscriptions:
     def __init__(self, app_state):
@@ -195,7 +196,7 @@ class Notifier:
             websocket = session['websocket']
             try:
                 if websocket.open:
-                    await websocket.send(message)
+                    asyncio.create_task(websocket.send(message))
                 else:
                     print(f"WebSocket {sid} closed, cannot send message.")
             except Exception as e:

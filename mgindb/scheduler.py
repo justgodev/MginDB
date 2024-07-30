@@ -122,7 +122,9 @@ class SchedulerTasks:
                 data_manager.save_data()
                 indices_manager.save_indices()
                 if await blockchain_manager.has_blockchain():
-                    await blockchain_manager.save_blockchain_pending_transactions()
+                    if await blockchain_manager.is_blockchain_master():
+                        await blockchain_manager.save_blockchain_pending_transactions()
+                        await blockchain_manager.resolve_blocks()
                 save_timer = 0
 
             await asyncio.sleep(1)

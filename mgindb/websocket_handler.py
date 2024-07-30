@@ -2,6 +2,8 @@ import uuid
 import ujson
 import asyncio
 import websockets
+import zlib
+import base64
 from .app_state import AppState
 from .command_processing import CommandProcessor
 
@@ -24,8 +26,7 @@ class WebSocketManager:
             "wss://master.mgindb.com",
             ping_interval=None,
             ping_timeout=None,
-            max_size=None,
-            subprotocols=["graphql-ws"]
+            max_size=None
         )
         print("Connected to master node at master.mgindb.com")
         await self.authenticate_blockchain_websocket()
@@ -52,7 +53,7 @@ class WebSocketManager:
             async for message in self.blockchain_websocket:
                 print(f'Blockchain WebSocket message received: {message}')
                 if message:
-                    await self.process_blockchain_message(message)
+                    asyncio.create_task(self.process_blockchain_message(message))
         except websockets.exceptions.ConnectionClosed:
             print("Blockchain WebSocket connection closed.")
         except Exception as e:
@@ -62,7 +63,7 @@ class WebSocketManager:
         try:
             print(f"Processing blockchain message: {message}")
             for session in self.sessions.values():
-                await session.websocket.send(message)
+                asyncio.create_task(session.websocket.send(message))
                 print(f"Message forwarded to main WebSocket session: {message}")
         except Exception as e:
             print(f"Error processing blockchain message: {e}")
@@ -70,7 +71,7 @@ class WebSocketManager:
     async def send_to_blockchain_websocket(self, message):
         if self.blockchain_websocket:
             try:
-                await self.blockchain_websocket.send(message)
+                asyncio.create_task(self.blockchain_websocket.send(message))
                 print(f"Message sent to Blockchain WebSocket: {message}")
             except Exception as e:
                 print(f"Failed to send message to Blockchain WebSocket: {e}")
@@ -96,8 +97,9 @@ class WebSocketSession:
             'websocket': websocket,
             'subscribed_keys': set(),
         }
-        self.message_queue = asyncio.Queue(maxsize=1000)  # Increase the queue size
+        self.message_queue = asyncio.Queue(maxsize=10000)  # Increase the queue size
         self.stop_event = asyncio.Event()
+        self.processing_tasks = set()  # Track ongoing tasks
 
     async def start(self):
         try:
@@ -144,8 +146,8 @@ class WebSocketSession:
         try:
             async for message in self.websocket:
                 print(f'Socket Message received: {message}')
-                await self.message_queue.put(message)
-                print(f'Message put in queue: {message}')
+                # Create a task to put the message in the queue to avoid blocking
+                asyncio.create_task(self.enqueue_message(message))
         except websockets.exceptions.ConnectionClosed:
             print(f"WebSocket connection closed for session ID: {self.sid}")
         except Exception as e:
@@ -155,41 +157,65 @@ class WebSocketSession:
             self.stop_event.set()
             await self.clean_up()
 
+    async def enqueue_message(self, message):
+        try:
+            await self.message_queue.put(message)
+            print(f'Message put in queue: {message}')
+        except Exception as e:
+            print(f"Error enqueuing message: {e}")
+
     async def process_messages(self):
+        print(f"Starting to process messages for session ID: {self.sid}")
         while not self.stop_event.is_set() or not self.message_queue.empty():
-            try:
+            if not self.message_queue.empty():
                 message = await self.message_queue.get()
                 print(f'Message dequeued for processing: {message}')
-                asyncio.create_task(self.process_message(message))
-            except Exception as e:
-                print(f"Error processing message: {e}")
-                await self.retry_message(message)
-
-    async def retry_message(self, message):
-        retry_attempts = 150
-        delay = 2
-        for attempt in range(retry_attempts):
-            try:
-                await self.process_message(message)
-                return
-            except Exception as e:
-                print(f"Retry {attempt + 1}/{retry_attempts} failed for message: {message}")
-                await asyncio.sleep(delay)
-        print(f"Failed to process message after {retry_attempts} attempts: {message}")
+                task = asyncio.create_task(self.process_message(message))
+                self.processing_tasks.add(task)
+                task.add_done_callback(self.processing_tasks.discard)
+            else:
+                await asyncio.sleep(0.2)
+        print(f"Stopping message processing for session ID: {self.sid}")
 
     async def process_message(self, message):
         try:
             print(f"Processing message: {message}")
+
+            # Check if the message is compressed (assuming it's base64-encoded and then compressed)
+            if self.is_compressed(message):
+                message = self.decompress_message(message)
+                print(f"Decompressed message: {message}")
+
             command = asyncio.create_task(self.command_processor.process_command(message, self.sid, self.websocket))
-            response = await command
-            response = ujson.dumps(response) if isinstance(response, dict) else str(response)
-            await self.websocket.send(response)
-            print(f'Response sent: {response}')
+            response_command = await command
+            if response_command:
+                response = ujson.dumps(response_command) if isinstance(response_command, dict) else str(response_command)
+                asyncio.create_task(self.websocket.send(response))
+                print(f'Response sent: {response}')
         except Exception as e:
             print(f"Error processing command for session ID {self.sid}: {e}")
         finally:
             self.message_queue.task_done()
             print(f'Message processing completed: {message}')
+
+    def is_compressed(self, message):
+        try:
+            # Try to decode the message from base64 and decompress it using zlib
+            decoded_message = base64.b64decode(message)
+            zlib.decompress(decoded_message)
+            return True
+        except (base64.binascii.Error, zlib.error):
+            return False
+
+    def decompress_message(self, message):
+        try:
+            # Decode from base64 and decompress using zlib
+            decoded_message = base64.b64decode(message)
+            decompressed_message = zlib.decompress(decoded_message)
+            return decompressed_message.decode('utf-8')
+        except Exception as e:
+            print(f"Error decompressing message: {e}")
+            raise
 
     async def clean_up(self):
         try:

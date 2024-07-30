@@ -28,18 +28,10 @@
     "BLOCKCHAIN_DECIMAL": "8",
     "BLOCKCHAIN_SUPPLY": "400000000000000000",
     "BLOCKCHAIN_MAX_SUPPLY": "400000000000000000",
-    "BLOCKCHAIN_SETUP_FEE": "100000000",
-    "BLOCKCHAIN_VALIDATOR_REWARD": "100000000",
+    "BLOCKCHAIN_SETUP_FEE": "1",
+    "BLOCKCHAIN_VALIDATOR_REWARD": "1",
     "BLOCKCHAIN_SYNC_CHUNKS": "100",
     "BLOCKCHAIN_BLOCK_MAX_SIZE": "10",
     "BLOCKCHAIN_BLOCK_AUTO_CREATION_INTERVAL": "120",
-    "BLOCKCHAIN_CONF": {
-        "genesis_address": "MXcRAtcbnGKLuYYDwEWApDVZhTh8aVHaxe",
-        "chain_length": 1,
-        "previous_hash": "87758e8d2b1072b72d38253cd37f3ba49431df10fe4037e45f934cecd30b544e",
-        "latest_block": 1722100159,
-        "validation_time": 0,
-        "difficulty": 1,
-        "fee": "100000000"
-    }
+    "BLOCKCHAIN_CONF": {}
 }

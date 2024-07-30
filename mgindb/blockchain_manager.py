@@ -15,117 +15,145 @@ from .constants import BLOCKCHAIN_DB, PENDING_TRANSACTIONS_FILE, WALLETS_FILE  #
 from .config import save_config  # Import config loading and saving
 from .sub_pub_manager import SubPubManager  # Publish/subscribe management
 from concurrent.futures import ThreadPoolExecutor
+
 executor = ThreadPoolExecutor(max_workers=10)
 
 class BlockchainManager:
     def __init__(self):
-        """Initialize BlockchainManager with application state and data file path."""
-        self.app_state = AppState()
-        self.blockchain_db = BLOCKCHAIN_DB
-        self.pending_transactions_file = PENDING_TRANSACTIONS_FILE
-        self.sub_pub_manager = SubPubManager()
-        self.last_block_time = time.time()
-        self._init_blockchain()
+        try:
+            """Initialize BlockchainManager with application state and data file path."""
+            self.app_state = AppState()
+            self.blockchain_db = BLOCKCHAIN_DB
+            self.pending_transactions_file = PENDING_TRANSACTIONS_FILE
+            self.sub_pub_manager = SubPubManager()
+            self.last_block_time = time.time()
+            self._init_blockchain()
+        except Exception as e:
+            print(f"Error initializing BlockchainManager: {e}")
 
     def _init_blockchain(self):
-        """Initialize the SQLite database."""
-        self.conn = sqlite3.connect(self.blockchain_db)
-        self.cursor = self.conn.cursor()
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS blockchain (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                block_index INTEGER,
-                timestamp INTEGER,
-                nonce INTEGER,
-                difficulty INTEGER,
-                validation_time REAL,
-                size INTEGER,
-                previous_hash TEXT,
-                hash TEXT,
-                checksum TEXT,
-                data TEXT,
-                fee TEXT,
-                validator TEXT
-            )
-        ''')
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS wallets (
-                address TEXT PRIMARY KEY,
-                balance TEXT,
-                balance_pending TEXT,
-                tx_count INTEGER,
-                tx_data TEXT,
-                last_tx_timestamp TEXT
-            )
-        ''')
-        self.conn.commit()
+        try:
+            """Initialize the SQLite database."""
+            self.conn = sqlite3.connect(self.blockchain_db)
+            self.cursor = self.conn.cursor()
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS blockchain (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    block_index INTEGER,
+                    timestamp INTEGER,
+                    nonce INTEGER,
+                    difficulty INTEGER,
+                    validation_time REAL,
+                    size INTEGER,
+                    previous_hash TEXT,
+                    hash TEXT,
+                    checksum TEXT,
+                    data TEXT,
+                    fee TEXT,
+                    validator TEXT
+                )
+            ''')
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS wallets (
+                    address TEXT PRIMARY KEY,
+                    balance TEXT,
+                    balance_pending TEXT,
+                    tx_count INTEGER,
+                    tx_data TEXT,
+                    last_tx_timestamp TEXT
+                )
+            ''')
+            self.conn.commit()
+        except sqlite3.Error as e:
+            print(f"Error initializing SQLite database: {e}")
 
     async def has_blockchain(self):
-        return self.app_state.config_store.get('BLOCKCHAIN') == '1'
+        try:
+            return self.app_state.config_store.get('BLOCKCHAIN') == '1'
+        except Exception as e:
+            print(f"Error checking blockchain status: {e}")
+            return False
+
     async def is_blockchain_master(self):
-        return self.app_state.config_store.get('BLOCKCHAIN_TYPE') == 'MASTER'
+        try:
+            return self.app_state.config_store.get('BLOCKCHAIN_TYPE') == 'MASTER'
+        except Exception as e:
+            print(f"Error checking blockchain master status: {e}")
+            return False
 
     async def blockchain_routines(self):
+        try:
             block_auto_creation_interval = self.app_state.config_store.get('BLOCKCHAIN_BLOCK_AUTO_CREATION_INTERVAL')
             current_time = time.time()
             if current_time - self.last_block_time >= int(block_auto_creation_interval):
                 if len(self.app_state.blockchain_mempool) > 0:
                     await self.create_and_save_block()
                     self.last_block_time = time.time()
+        except Exception as e:
+            print(f"Error during blockchain routines: {e}")
 
     def get_blockchain(self, args=None):
-        """Return the entire blockchain or from a specific index."""
-        
-        # If args are provided and start with 'FROM', filter the blockchain data accordingly
-        if args and args.strip().startswith('FROM'):
-            _, index = args.split(' ')
-            index = int(index)
-            blockchain_data = [block for block in self.app_state.blockchain if block['index'] > index]
-        else:
-            blockchain_data = self.app_state.blockchain
+        try:
+            """Return the entire blockchain or from a specific index."""
+            if args and args.strip().startswith('FROM'):
+                _, index = args.split(' ')
+                index = int(index)
+                blockchain_data = [block for block in self.app_state.blockchain if block['index'] > index]
+            else:
+                blockchain_data = self.app_state.blockchain
 
-        chunks = list(self.chunk_data(blockchain_data))  # Convert generator to list for debug print
-        return chunks
+            chunks = list(self.chunk_data(blockchain_data))  # Convert generator to list for debug print
+            return chunks
+        except Exception as e:
+            print(f"Error getting blockchain: {e}")
+            return []
 
     def chunk_data(self, data):
-        """
-        Chunk the data into smaller pieces for sending via WebSocket.
-        """
-        total_chunks = len(data)
-        for i, block in enumerate(data):
-            yield ujson.dumps({
-                "chunk_index": i,
-                "total_chunks": total_chunks,
-                "data": [block]  # Send one full block per chunk
-            })
-        # Yield a separate end chunk as a valid JSON object
-        yield ujson.dumps({"chunk_index": total_chunks, "end": True})
+        try:
+            """
+            Chunk the data into smaller pieces for sending via WebSocket.
+            """
+            total_chunks = len(data)
+            for i, block in enumerate(data):
+                yield ujson.dumps({
+                    "chunk_index": i,
+                    "total_chunks": total_chunks,
+                    "data": [block]  # Send one full block per chunk
+                })
+            # Yield a separate end chunk as a valid JSON object
+            yield ujson.dumps({"chunk_index": total_chunks, "end": True})
+        except Exception as e:
+            print(f"Error chunking data: {e}")
 
     def format_block(self, row):
-        """
-        Convert a database row into a block format.
-        """
-        block = {
-            'index': row[1],
-            'timestamp': row[2],
-            'nonce': row[3],
-            'difficulty': row[4],
-            'validation_time': row[5],
-            'size': row[6],
-            'previous_hash': row[7],
-            'hash': row[8],
-            'checksum': row[9],
-            'data': ujson.loads(row[10]),
-            'fee': row[11],
-            'validator': row[12]
-        }
-        return block
+        try:
+            """
+            Convert a database row into a block format.
+            """
+            block = {
+                'index': row[1],
+                'timestamp': row[2],
+                'nonce': row[3],
+                'difficulty': row[4],
+                'validation_time': row[5],
+                'size': row[6],
+                'previous_hash': row[7],
+                'hash': row[8],
+                'checksum': row[9],
+                'data': ujson.loads(row[10]),
+                'fee': row[11],
+                'validator': row[12]
+            }
+            return block
+        except Exception as e:
+            print(f"Error formatting block: {e}")
+            return {}
 
     async def load_blockchain(self):
-        """
-        Load data from the blockchain table into the application state.
-        """
         try:
+            """
+            Load data from the blockchain table into the application state.
+            """
             with sqlite3.connect(self.blockchain_db) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT * FROM blockchain")
@@ -134,46 +162,36 @@ class BlockchainManager:
                     await self.create_genesis_block()
                 else:
                     self.app_state.blockchain = [
-                        {
-                            'index': row[1],
-                            'timestamp': row[2],
-                            'nonce': row[3],
-                            'difficulty': row[4],
-                            'validation_time': row[5],
-                            'size': row[6],
-                            'previous_hash': row[7],
-                            'hash': row[8],
-                            'checksum': row[9],
-                            'data': ujson.loads(row[10]),
-                            'fee': row[11],
-                            'validator': row[12]
-                        }
+                        self.format_block(row)
                         for row in loaded_blockchain
                     ]
         except sqlite3.Error as e:
             print(f"Failed to load blockchain: {e}")
             await self.create_genesis_block()
-    
+
     async def load_blockchain_pending_transactions(self):
-        """
-        Load data from the pending transactions file into the application state.
-        """
-        if not os.path.exists(self.pending_transactions_file):
-            with open(self.pending_transactions_file, mode='w', encoding='utf-8') as file:
-                ujson.dump([], file)
-        else:
-            try:
-                with open(self.pending_transactions_file, mode='r', encoding='utf-8') as file:
-                    loaded_pending_transactions = ujson.load(file)
-                self.app_state.blockchain_pending_transactions = loaded_pending_transactions
-            except ujson.JSONDecodeError as e:
-                print(f"Failed to load pending transactions: {e}")
+        try:
+            """
+            Load data from the pending transactions file into the application state.
+            """
+            if not os.path.exists(self.pending_transactions_file):
+                with open(self.pending_transactions_file, mode='w', encoding='utf-8') as file:
+                    ujson.dump([], file)
+            else:
+                try:
+                    with open(self.pending_transactions_file, mode='r', encoding='utf-8') as file:
+                        loaded_pending_transactions = ujson.load(file)
+                    self.app_state.blockchain_pending_transactions = loaded_pending_transactions
+                except ujson.JSONDecodeError as e:
+                    print(f"Failed to load pending transactions: {e}")
+        except Exception as e:
+            print(f"Error loading blockchain pending transactions: {e}")
 
     async def load_blockchain_wallets(self):
-        """
-        Load data from the wallets table into the application state.
-        """
         try:
+            """
+            Load data from the wallets table into the application state.
+            """
             with sqlite3.connect(self.blockchain_db) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT * FROM wallets")
@@ -196,10 +214,10 @@ class BlockchainManager:
             self.app_state.wallets = {}
 
     async def save_blockchain(self, block):
-        """
-        Save the provided block data to the blockchain table.
-        """
         try:
+            """
+            Save the provided block data to the blockchain table.
+            """
             self.cursor.execute('''
                 INSERT INTO blockchain (block_index, timestamp, nonce, difficulty, validation_time, size, previous_hash, hash, checksum, data, fee, validator)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -220,24 +238,24 @@ class BlockchainManager:
             self.conn.commit()
         except IOError as e:
             print(f"Failed to save blockchain: {e}")
-    
+
     async def save_blockchain_pending_transactions(self):
-        """
-        Save the current data in the application state to the pending transactions file.
-        """
         try:
+            """
+            Save the current data in the application state to the pending transactions file.
+            """
             if self.app_state.blockchain_pending_transactions_has_changed:
                 with open(self.pending_transactions_file, mode='w', encoding='utf-8') as file:
                     ujson.dump(self.app_state.blockchain_pending_transactions, file, indent=4)
                     self.app_state.blockchain_pending_transactions_has_changed = False
         except IOError as e:
             print(f"Failed to save pending transactions: {e}")
-    
+
     async def save_blockchain_wallets(self, address, wallet):
-        """
-        Save the provided wallet data to the wallets table.
-        """
         try:
+            """
+            Save the provided wallet data to the wallets table.
+            """
             self.cursor.execute('''
                 INSERT OR REPLACE INTO wallets (address, balance, balance_pending, tx_count, tx_data, last_tx_timestamp)
                 VALUES (?, ?, ?, ?, ?, ?)
@@ -254,111 +272,124 @@ class BlockchainManager:
             print(f"Failed to save wallets: {e}")
 
     async def create_genesis_block(self):
-        """Create the genesis wallet"""
-        wallet = await self.new_wallet()
-        genesis_address = wallet.get('address')
-        """Create the genesis block and initialize blockchain configuration."""
-        blockchain_supply = self.app_state.config_store.get('BLOCKCHAIN_SUPPLY', '0')
+        try:
+            """Create the genesis wallet"""
+            wallet = await self.new_wallet()
+            genesis_address = wallet.get('address')
+            """Create the genesis block and initialize blockchain configuration."""
+            blockchain_supply = self.app_state.config_store.get('BLOCKCHAIN_SUPPLY', '0')
 
-        genesis_transaction = {
-            'nonce': 0,
-            'difficulty': 0,
-            'validation_time': 0,
-            'size': 0,
-            'hash': '',
-            'checksum': '',
-            'txid': '',
-            'sender': '',
-            'receiver': genesis_address,
-            'validator': '',
-            'amount': blockchain_supply,
-            'data': '',
-            'fee': '0',
-            'timestamp': int(time.time()),
-            'status': True
-        }
-
-        tx_size = len(ujson.dumps(genesis_transaction).encode())
-        genesis_transaction['txid'] = await self.hash_data(genesis_transaction)
-        genesis_transaction['hash'] = await self.calculate_hash(genesis_transaction)
-        genesis_transaction['size'] = tx_size
-        genesis_transaction['checksum'] = self.calculate_checksum(genesis_transaction)
-
-        genesis_block = {
-            'index': 0,
-            'timestamp': int(time.time()),
-            'nonce': 0,
-            'difficulty': 1,
-            'validation_time': 0,
-            'size': tx_size,
-            'previous_hash': '0',
-            'hash': '',
-            'checksum': '',
-            'data': [genesis_transaction],
-            'fee': '0',
-            'validator': ''
-        }
-    
-        genesis_block['hash'] = await self.calculate_hash(genesis_block)
-        genesis_block['checksum'] = self.calculate_checksum(genesis_block)
-        self.app_state.blockchain.append(genesis_block)
-        await self.save_blockchain(genesis_block)
-
-        genesis_wallet = self.app_state.wallets.get(wallet.get('address'))
-        if genesis_wallet:
-            tx_data = {
-                "block_index": genesis_block['index'],
-                "txid": genesis_transaction['txid'],
-                "hash": genesis_transaction['hash'],
-                "amount": blockchain_supply,
-                "fee": genesis_transaction['fee'],
-                "sender": genesis_transaction['sender'],
-                "receiver": genesis_transaction['receiver'],
-                "timestamp": genesis_block['timestamp'],
-                "status": True
+            genesis_transaction = {
+                'nonce': 0,
+                'difficulty': 0,
+                'validation_time': 0,
+                'size': 0,
+                'hash': '',
+                'checksum': '',
+                'txid': '',
+                'sender': '',
+                'receiver': genesis_address,
+                'validator': '',
+                'amount': blockchain_supply,
+                'data': '',
+                'fee': '0',
+                'timestamp': int(time.time()),
+                'confirmed': True
             }
-            genesis_wallet['balance'] = blockchain_supply
-            genesis_wallet['last_tx_timestamp'] = genesis_transaction['timestamp']
-            genesis_wallet['tx_count'] += 1
-            genesis_wallet['tx_data'].append(tx_data)
-            await self.save_blockchain_wallets(genesis_address, genesis_wallet)
 
-        # Initialize blockchain configuration
-        self.app_state.config_store['BLOCKCHAIN_CONF'] = {
-            'genesis_address': wallet.get('address'),
-            'chain_length': 1,
-            'previous_hash': genesis_block['hash'],
-            'latest_block': int(genesis_block['timestamp']),
-            'validation_time': genesis_block['validation_time'],
-            'difficulty': genesis_block['difficulty'],
-            'fee': self.app_state.config_store['BLOCKCHAIN_SETUP_FEE']
-        }
-        save_config()
+            tx_size = len(ujson.dumps(genesis_transaction).encode())
+            genesis_transaction['txid'] = await self.hash_data(genesis_transaction)
+            genesis_transaction['hash'] = await self.calculate_hash(genesis_transaction)
+            genesis_transaction['size'] = tx_size
+            genesis_transaction['checksum'] = self.calculate_checksum(genesis_transaction)
+
+            genesis_block = {
+                'index': 0,
+                'timestamp': int(time.time()),
+                'nonce': 0,
+                'difficulty': 1,
+                'validation_time': 0,
+                'size': tx_size,
+                'previous_hash': '0',
+                'hash': '',
+                'checksum': '',
+                'data': [genesis_transaction],
+                'fee': '0',
+                'validator': ''
+            }
+
+            genesis_block['hash'] = await self.calculate_hash(genesis_block)
+            genesis_block['checksum'] = self.calculate_checksum(genesis_block)
+            self.app_state.blockchain.append(genesis_block)
+            await self.save_blockchain(genesis_block)
+
+            genesis_wallet = self.app_state.wallets.get(wallet.get('address'))
+            if genesis_wallet:
+                tx_data = {
+                    "block_index": genesis_block['index'],
+                    "txid": genesis_transaction['txid'],
+                    "hash": genesis_transaction['hash'],
+                    "amount": blockchain_supply,
+                    "fee": genesis_transaction['fee'],
+                    "sender": genesis_transaction['sender'],
+                    "receiver": genesis_transaction['receiver'],
+                    "timestamp": genesis_block['timestamp'],
+                    "confirmed": True
+                }
+                genesis_wallet['balance'] = blockchain_supply
+                genesis_wallet['last_tx_timestamp'] = genesis_transaction['timestamp']
+                genesis_wallet['tx_count'] += 1
+                genesis_wallet['tx_data'].append(tx_data)
+                await self.save_blockchain_wallets(genesis_address, genesis_wallet)
+
+            # Initialize blockchain configuration
+            self.app_state.config_store['BLOCKCHAIN_CONF'] = {
+                'genesis_address': wallet.get('address'),
+                'chain_length': 1,
+                'previous_hash': genesis_block['hash'],
+                'latest_block': int(genesis_block['timestamp']),
+                'validation_time': genesis_block['validation_time'],
+                'difficulty': genesis_block['difficulty'],
+                'fee': self.app_state.config_store['BLOCKCHAIN_SETUP_FEE']
+            }
+            save_config()
+        except Exception as e:
+            print(f"Error creating genesis block: {e}")
 
     async def calculate_hash(self, block):
-        block_string = ujson.dumps(block, sort_keys=True).encode()
-        return hashlib.sha256(block_string).hexdigest()
+        try:
+            block_string = ujson.dumps(block, sort_keys=True).encode()
+            return hashlib.sha256(block_string).hexdigest()
+        except Exception as e:
+            print(f"Error calculating hash: {e}")
+            return ""
 
     async def mine_block(self, block, difficulty):
-        start_time = time.time()  # Record the start time
-        target = '0' * difficulty
-        while block['hash'][:difficulty] != target:
-            block['nonce'] += 1
-            block['hash'] = await self.calculate_hash(block)
-        block['validation_time'] = time.time() - start_time  # Record the time taken to mine the block
-        return block
+        try:
+            start_time = time.time()  # Record the start time
+            target = '0' * difficulty
+            while block['hash'][:difficulty] != target:
+                block['nonce'] += 1
+                block['hash'] = await self.calculate_hash(block)
+            block['validation_time'] = time.time() - start_time  # Record the time taken to mine the block
+            return block
+        except Exception as e:
+            print(f"Error mining block: {e}")
+            return block
 
     async def hash_data(self, data):
-        """Hash the data using SHA-256."""
-        data_string = ujson.dumps(data, sort_keys=True).encode()
-        return hashlib.sha256(data_string).hexdigest()
-
+        try:
+            """Hash the data using SHA-256."""
+            data_string = ujson.dumps(data, sort_keys=True).encode()
+            return hashlib.sha256(data_string).hexdigest()
+        except Exception as e:
+            print(f"Error hashing data: {e}")
+            return ""
 
     async def submit_txn(self, block_data):
         from .scheduler import SchedulerManager  # Scheduler management
-        self.scheduler_manager = SchedulerManager()  # Manages the scheduler
-
         try:
+            self.scheduler_manager = SchedulerManager()  # Manages the scheduler
             # Decode the JSON block data
             transaction = ujson.loads(block_data)
             
@@ -379,13 +410,6 @@ class BlockchainManager:
             # Tx per block
             if len(self.app_state.blockchain_mempool) >= int(self.app_state.config_store.get('BLOCKCHAIN_BLOCK_MAX_SIZE')):
                 await self.send_block_for_mining()
-            
-            return ujson.dumps({
-                "type": "txn_confirmation",
-                "data": transaction,
-                "request_id": None,
-                "sid": None
-            })
         except Exception as e:
             print(f"Error adding transaction: {e}")
             return "Error adding transaction"
@@ -393,7 +417,6 @@ class BlockchainManager:
     async def send_block_for_mining(self):
         try:
             # Blockchain details
-            chain_length = self.app_state.config_store['BLOCKCHAIN_CONF']['chain_length']
             previous_hash = self.app_state.config_store['BLOCKCHAIN_CONF']['previous_hash']
 
             block = {
@@ -412,7 +435,6 @@ class BlockchainManager:
             }
 
             self.app_state.blockchain_mempool = []
-            blockchain_data = self.app_state.config_store['BLOCKCHAIN_CONF']
 
             # Generate a unique request_id
             request_id = str(uuid.uuid4())
@@ -421,28 +443,26 @@ class BlockchainManager:
             self.app_state.blockchain_blocks_requests[request_id] = None
 
             # Notify nodes passing the request_id
-            notify = asyncio.create_task(self.sub_pub_manager.notify_node("mine_block", block, request_id, node_type="FULL"))
-            await notify
+            await self.sub_pub_manager.notify_node("mine_block", block, request_id, node_type="FULL")
+        except Exception as e:
+            print(f"Error sending block for mining: {e}")
+            return False  # Return False if an exception occurred
 
-            # Wait for resolve_blocks to return the result for the request_id
-            resolve = asyncio.create_task(self.resolve_blocks(request_id))
-            mined_block = await resolve
+    async def create_and_save_block(self, mined_block):
+        try:
+            print('creating and saving block')
+            # Blockchain details
+            blockchain_data = self.app_state.config_store['BLOCKCHAIN_CONF']
+            chain_length = blockchain_data['chain_length']
+            previous_hash = blockchain_data['previous_hash']
 
-            if not mined_block:
-                print('Mining failed or timed out')
-                return False  # Return False if mining failed
-
-            chain_length = self.app_state.config_store['BLOCKCHAIN_CONF']['chain_length']
             mined_block["index"] = chain_length
+            mined_block["previous_hash"] = previous_hash
             blockchain_data['chain_length'] = chain_length + 1
 
             # Save the block to the blockchain
             self.app_state.blockchain.append(mined_block)
             await self.save_blockchain(mined_block)
-
-            # Notify nodes
-            notify = asyncio.create_task(self.sub_pub_manager.notify_nodes("new_block", [mined_block], None, node_type="FULL"))
-            await notify
 
             # Update blockchain configuration
             new_difficulty = self.adjust_difficulty(mined_block['validation_time'])
@@ -452,6 +472,23 @@ class BlockchainManager:
             validator_rewards = {}
 
             # Update wallets data
+            for txn in mined_block['data']:
+                # Process wallets
+                await self._process_wallets(mined_block, txn, validator_rewards)
+        
+            # Create a single transaction per validator with the total rewards
+            await self._create_validator_reward(mined_block, validator_rewards)
+
+            # Notify nodes
+            await self.sub_pub_manager.notify_nodes("new_block", [mined_block], None, node_type="FULL")
+
+            return None
+        except Exception as e:
+            print(f"Error creating and saving block: {e}")
+            return False  # Return False if an exception occurred
+    
+    async def _process_wallets(self, mined_block, txn, validator_rewards):
+        try:
             wallet_template = {
                 "balance": "0",
                 "balance_pending": "0",
@@ -460,393 +497,341 @@ class BlockchainManager:
                 "last_tx_timestamp": ""
             }
 
-            def update_tx_data(wallet, tx_data):
-                for i, tx in enumerate(wallet['tx_data']):
-                    if tx['txid'] == tx_data['txid']:
-                        wallet['tx_data'][i] = tx_data
-                        return
-                wallet['tx_data'].append(tx_data)
+            sender_address = txn['sender']
+            receiver_address = txn['receiver']
+            validator_address = txn['validator']
 
-            for txn in mined_block['data']:
-                sender_address = txn['sender']
-                receiver_address = txn['receiver']
-                validator_address = txn['validator']
-
-                # Ensure sender wallet exists
-                if sender_address not in self.app_state.wallets:
-                    self.app_state.wallets[sender_address] = wallet_template.copy()
-                sender_wallet = self.app_state.wallets[sender_address]
+            # Ensure sender wallet exists
+            if sender_address not in self.app_state.wallets:
+                self.app_state.wallets[sender_address] = wallet_template.copy()
+            sender_wallet = self.app_state.wallets[sender_address]
                 
-                # Ensure receiver wallet exists
-                if receiver_address not in self.app_state.wallets:
-                    self.app_state.wallets[receiver_address] = wallet_template.copy()
-                receiver_wallet = self.app_state.wallets[receiver_address]
+            # Ensure receiver wallet exists
+            if receiver_address not in self.app_state.wallets:
+                self.app_state.wallets[receiver_address] = wallet_template.copy()
+            receiver_wallet = self.app_state.wallets[receiver_address]
 
-                tx_data = {
-                    "block_index": mined_block["index"],
-                    "txid": txn['txid'],
-                    "hash": txn['hash'],
-                    "amount": txn['amount'],
-                    "fee": txn['fee'],
-                    "sender": txn['sender'],
-                    "receiver": txn['receiver'],
-                    "timestamp": txn['timestamp'],
-                    "status": txn['status']
-                }
+            tx_data = {
+                "block_index": mined_block["index"],
+                "txid": txn['txid'],
+                "hash": txn['hash'],
+                "amount": txn['amount'],
+                "fee": txn['fee'],
+                "sender": txn['sender'],
+                "receiver": txn['receiver'],
+                "timestamp": txn['timestamp'],
+                "confirmed": txn['confirmed']
+            }
 
-                if sender_wallet:
-                    sender_wallet['balance'] = str(int(sender_wallet['balance']) - int(txn['amount']) - int(txn['fee']))
-                    sender_wallet['balance_pending'] = str(int(sender_wallet['balance_pending']) + int(txn['amount']) + int(txn['fee']))
-                    sender_wallet['last_tx_timestamp'] = mined_block['timestamp']
-                    update_tx_data(sender_wallet, tx_data)
-                    self.app_state.data_store["wallets"][sender_address] = sender_wallet
-                    await self.save_blockchain_wallets(sender_address, sender_wallet)
+            if sender_wallet:
+                sender_wallet['balance'] = str(int(sender_wallet['balance']) - int(txn['amount']) - int(txn['fee']))
+                sender_wallet['balance_pending'] = str(int(sender_wallet['balance_pending']) + int(txn['amount']) + int(txn['fee']))
+                sender_wallet['last_tx_timestamp'] = mined_block['timestamp']
+                existing_tx = next((tx for tx in sender_wallet['tx_data'] if tx['txid'] == tx_data['txid']), None)
+                if existing_tx:
+                    sender_wallet['tx_data'][sender_wallet['tx_data'].index(existing_tx)] = tx_data
+                else:
+                    sender_wallet['tx_data'].append(tx_data)
 
-                if receiver_wallet and receiver_wallet != sender_wallet:
-                    receiver_wallet['balance'] = str(int(receiver_wallet['balance']) + int(txn['amount']))
-                    receiver_wallet['balance_pending'] = str(int(receiver_wallet['balance_pending']) - int(txn['amount']))
-                    receiver_wallet['last_tx_timestamp'] = mined_block['timestamp']
-                    update_tx_data(receiver_wallet, tx_data)
-                    self.app_state.data_store["wallets"][receiver_address] = receiver_wallet
-                    await self.save_blockchain_wallets(receiver_address, receiver_wallet)
+                self.app_state.data_store["wallets"][sender_address] = sender_wallet
+                await self.save_blockchain_wallets(sender_address, sender_wallet)
+
+            if receiver_wallet and receiver_wallet != sender_wallet:
+                receiver_wallet['balance'] = str(int(receiver_wallet['balance']) + int(txn['amount']))
+                receiver_wallet['balance_pending'] = str(int(receiver_wallet['balance_pending']) - int(txn['amount']))
+                receiver_wallet['last_tx_timestamp'] = mined_block['timestamp']
+                existing_tx = next((tx for tx in receiver_wallet['tx_data'] if tx['txid'] == tx_data['txid']), None)
+                if existing_tx:
+                    receiver_wallet['tx_data'][receiver_wallet['tx_data'].index(existing_tx)] = tx_data
+                else:
+                    receiver_wallet['tx_data'].append(tx_data)
+
+                self.app_state.data_store["wallets"][receiver_address] = receiver_wallet
+                await self.save_blockchain_wallets(receiver_address, receiver_wallet)
                 
-                self.app_state.data_has_changed = True
+            self.app_state.data_has_changed = True
             
-                if validator_address:
-                    if validator_address not in validator_rewards:
-                        validator_rewards[validator_address] = 0
-                    validator_rewards[validator_address] += int(self.app_state.config_store['BLOCKCHAIN_VALIDATOR_REWARD'])
-        
+            if validator_address:
+                if validator_address not in validator_rewards:
+                    validator_rewards[validator_address] = 0
+                validator_rewards[validator_address] += int(self.app_state.config_store['BLOCKCHAIN_VALIDATOR_REWARD'])
+        except Exception as e:
+            print(f"Error processing wallets: {e}")
+            return False  # Error processing wallets
+    
+    async def _create_validator_reward(self, mined_block, validator_rewards):
+        try:
             # Create a single transaction per validator with the total rewards
             genesis_address = self.app_state.config_store['BLOCKCHAIN_CONF']['genesis_address']
             for validator_address, total_reward in validator_rewards.items():
                 validator_data = str({'Validator reward': [txn['hash'] for txn in mined_block['data'] if txn['validator'] == validator_address]})
                 print("add_validator_reward", validator_data)
                 await self.send_internal_txn(genesis_address, validator_address, str(total_reward), validator_data)
-
-            # Remove the request entry from app_state.blockchain_txns_requests
-            self.app_state.blockchain_blocks_requests.pop(request_id, None)
-
-            return True  # Return True if everything was successful
         except Exception as e:
-            print(f"Error sending block for mining: {e}")
-            return False  # Return False if an exception occurred
-
-    async def create_and_save_block(self):
-        chain_length = self.app_state.config_store['BLOCKCHAIN_CONF']['chain_length']
-        previous_hash = self.app_state.config_store['BLOCKCHAIN_CONF']['previous_hash']
-
-        block = {
-            'index': chain_length,
-            'timestamp': int(time.time()),
-            'nonce': 0,
-            'difficulty': self.app_state.config_store['BLOCKCHAIN_CONF']['difficulty'],
-            'validation_time': 0,
-            'size': len(ujson.dumps(self.app_state.blockchain_mempool).encode()),
-            'previous_hash': previous_hash,
-            'data': self.app_state.blockchain_mempool,  # Use accumulated transactions
-            'fee': str(sum(int(tx['fee']) for tx in self.app_state.blockchain_mempool)),
-            'validator': ''
-        }
-
-        # Clear the accumulated transactions
-        self.app_state.blockchain_mempool = []
-        mined_block = await self.mine_block(block, block['difficulty'])
-        mined_block['checksum'] = self.calculate_checksum(mined_block)
-        
-        # Save the block to the blockchain
-        self.app_state.blockchain.append(mined_block)
-        await self.save_blockchain(mined_block)
-
-        # Notify nodes
-        notify = asyncio.create_task(self.sub_pub_manager.notify_nodes("new_block", [mined_block], None, node_type="FULL"))
-        await notify
-
-        # Update blockchain configuration
-        new_difficulty = self.adjust_difficulty(mined_block['validation_time'])
-        await self.update_blockchain_data(mined_block, new_difficulty)
-
-        # Dictionary to accumulate rewards for each validator
-        validator_rewards = {}
-
-        # Update wallets data
-        for txn in mined_block['data']:
-            sender_address = txn['sender']
-            sender_wallet = self.app_state.wallets.get(sender_address, {
-                'balance': '0', 'last_tx_timestamp': 0, 'tx_count': 0, 'tx_data': []
-            })
-            
-            receiver_address = txn['receiver']
-            receiver_wallet = self.app_state.wallets.get(receiver_address, {
-                'balance': '0', 'last_tx_timestamp': 0, 'tx_count': 0, 'tx_data': []
-            })
-            
-            validator_address = txn['validator']
-            tx_data = f"{txn['txid']}:{block['index']}"
-
-            if sender_wallet:
-                sender_wallet['balance'] = str(int(sender_wallet['balance']) - int(txn['amount']) - int(txn['fee']))
-                sender_wallet['last_tx_timestamp'] = mined_block['timestamp']
-                sender_wallet['tx_count'] += 1
-                sender_wallet['tx_data'].append(tx_data)
-                await self.save_blockchain_wallets(sender_address, sender_wallet)
-
-            if receiver_wallet and receiver_wallet != sender_wallet:
-                receiver_wallet['balance'] = str(int(receiver_wallet['balance']) + int(txn['amount']))
-                receiver_wallet['last_tx_timestamp'] = mined_block['timestamp']
-                receiver_wallet['tx_count'] += 1
-                receiver_wallet['tx_data'].append(tx_data)
-                await self.save_blockchain_wallets(receiver_address, receiver_wallet)
-            
-            if validator_address:
-                if validator_address not in validator_rewards:
-                    validator_rewards[validator_address] = 0
-                validator_rewards[validator_address] += int(self.app_state.config_store['BLOCKCHAIN_VALIDATOR_REWARD'])
-        
-        # Create a single transaction per validator with the total rewards
-        genesis_address = self.app_state.config_store['BLOCKCHAIN_CONF']['genesis_address']
-        for validator_address, total_reward in validator_rewards.items():
-            validator_data = str({'Validator reward': [txn['hash'] for txn in mined_block['data'] if txn['validator'] == validator_address]})
-            await self.send_internal_txn(genesis_address, validator_address, str(total_reward), validator_data)
+            print(f"Error creating validator reward: {e}")
+            return False  # Error creating validator reward
 
     def adjust_difficulty(self, validation_time):
-        target_time = 5  # Target time per block in seconds
+        try:
+            target_time = 5  # Target time per block in seconds
 
-        current_difficulty = self.app_state.config_store['BLOCKCHAIN_CONF']['difficulty']
+            current_difficulty = self.app_state.config_store['BLOCKCHAIN_CONF']['difficulty']
 
-        if validation_time < target_time:
-            # If mining time is less than the target, increase difficulty proportionally
-            adjustment = max(1, int((target_time - validation_time) * current_difficulty / target_time))
-            new_difficulty = current_difficulty + adjustment
-        elif validation_time > target_time:
-            # If mining time is more than the target, decrease difficulty proportionally
-            adjustment = max(1, int((validation_time - target_time) * current_difficulty / target_time))
-            new_difficulty = current_difficulty - adjustment
-        else:
-            new_difficulty = current_difficulty
+            if validation_time < target_time:
+                # If mining time is less than the target, increase difficulty proportionally
+                adjustment = max(1, int((target_time - validation_time) * current_difficulty / target_time))
+                new_difficulty = current_difficulty + adjustment
+            elif validation_time > target_time:
+                # If mining time is more than the target, decrease difficulty proportionally
+                adjustment = max(1, int((validation_time - target_time) * current_difficulty / target_time))
+                new_difficulty = current_difficulty - adjustment
+            else:
+                new_difficulty = current_difficulty
 
-        # Ensure the difficulty does not drop below 1
-        if new_difficulty < 1:
-            new_difficulty = 1
+            # Ensure the difficulty does not drop below 1
+            if new_difficulty < 1:
+                new_difficulty = 1
 
-        # Ensure the difficulty does not exceed the maximum value
-        if new_difficulty > 3:
-            new_difficulty = 3
+            # Ensure the difficulty does not exceed the maximum value
+            if new_difficulty > 3:
+                new_difficulty = 3
 
-        return new_difficulty
+            return new_difficulty
+        except Exception as e:
+            print(f"Error adjusting difficulty: {e}")
+            return current_difficulty
 
     def validate_block(self, block):
-        previous_block = self.app_state.blockchain[block['index'] - 1]
-        if block['previous_hash'] != previous_block['hash']:
+        try:
+            previous_block = self.app_state.blockchain[block['index'] - 1]
+            if block['previous_hash'] != previous_block['hash']:
+                return False
+            if block['hash'] != self.calculate_hash(block):
+                return False
+            if block['hash'][:block['difficulty']] != '0' * block['difficulty']:
+                return False
+            return True
+        except Exception as e:
+            print(f"Error validating block: {e}")
             return False
-        if block['hash'] != self.calculate_hash(block):
-            return False
-        if block['hash'][:block['difficulty']] != '0' * block['difficulty']:
-            return False
-        return True
 
     def validate_chain(self):
-        for i in range(1, len(self.app_state.blockchain)):
-            if not self.validate_block(self.app_state.blockchain[i]):
-                return False
-        return True
+        try:
+            for i in range(1, len(self.app_state.blockchain)):
+                if not self.validate_block(self.app_state.blockchain[i]):
+                    return False
+            return True
+        except Exception as e:
+            print(f"Error validating chain: {e}")
+            return False
 
     async def add_txn(self, sender, receiver, amount="0", data="", fee="0"):
         from .scheduler import SchedulerManager  # Scheduler management
-        self.scheduler_manager = SchedulerManager()  # Manages the scheduler
-
-        # Convert sender address to bytes
         try:
+            self.scheduler_manager = SchedulerManager()  # Manages the scheduler
+
+            # Convert sender address to bytes
             address_bytes = sender.encode('utf-8')
-        except AttributeError as e:
-            print(f"Error encoding sender: {e}")
-            raise
 
-        # Compute SHA-256 hash of the address bytes
-        try:
+            # Compute SHA-256 hash of the address bytes
             sha256_hash = hashlib.sha256(address_bytes).digest()
-        except Exception as e:
-            print(f"Error hashing address bytes: {e}")
-            raise
 
-        # Encode the hash using base64 URL-safe encoding
-        try:
+            # Encode the hash using base64 URL-safe encoding
             encryption_key = base64.urlsafe_b64encode(sha256_hash)
-        except Exception as e:
-            print(f"Error encoding hash: {e}")
-            raise
 
-        # Create a Fernet encryption object with the encryption key
-        try:
+            # Create a Fernet encryption object with the encryption key
             fernet = Fernet(encryption_key)
-        except Exception as e:
-            print(f"Error creating Fernet object: {e}")
-            raise
 
-        # Encrypt the data using the Fernet encryption object
-        try:
+            # Encrypt the data using the Fernet encryption object
             encrypted_data = fernet.encrypt(data.encode()).decode()
+
+            transaction = {
+                'timestamp': int(time.time()),
+                'sender': sender,
+                'receiver': receiver,
+                'amount': str(int(float(amount))),
+                'data': encrypted_data,
+                'fee': fee,
+                'confirmed': False
+            }
+
+            txid = await self.hash_data(transaction)
+            transaction['txid'] = str(txid)
+            transaction['difficulty'] = self.app_state.config_store['BLOCKCHAIN_CONF']['difficulty']
+            transaction['size'] = len(ujson.dumps(transaction).encode())
+            transaction['checksum'] = self.calculate_checksum(transaction)
+            self.app_state.blockchain_pending_transactions.append(transaction)
+
+            # Save pending transactions
+            self.app_state.blockchain_pending_transactions_has_changed = True
+            if not self.scheduler_manager.is_scheduler_active():
+                self.save_blockchain_pending_transactions()
+
+            await self.sub_pub_manager.notify_node("txn", transaction, None, node_type="ALL")
+
+            #await self.blockchain_routines()
+            return transaction
         except Exception as e:
-            print(f"Error encrypting data: {e}")
-            raise
-
-        transaction = {
-            'timestamp': int(time.time()),
-            'sender': sender,
-            'receiver': receiver,
-            'amount': str(int(float(amount))),
-            'data': encrypted_data,
-            'fee': fee,
-        }
-
-        txid = await self.hash_data(transaction)
-        transaction['txid'] = str(txid)
-        transaction['difficulty'] = self.app_state.config_store['BLOCKCHAIN_CONF']['difficulty']
-        transaction['size'] = len(ujson.dumps(transaction).encode())
-        transaction['checksum'] = self.calculate_checksum(transaction)
-        transaction['status'] = False
-        self.app_state.blockchain_pending_transactions.append(transaction)
-
-        # Save pending transactions
-        self.app_state.blockchain_pending_transactions_has_changed = True
-        if not self.scheduler_manager.is_scheduler_active():
-            self.save_blockchain_pending_transactions()
-
-        notify = asyncio.create_task(self.sub_pub_manager.notify_node("txn", transaction, None, node_type="ALL"))
-        await notify
-
-        #await self.blockchain_routines()
-        return transaction
+            print(f"Error adding transaction: {e}")
+            return {}
 
     async def update_blockchain_data(self, block, difficulty):
-        blockchain_data = self.app_state.config_store['BLOCKCHAIN_CONF']
-        blockchain_data['previous_hash'] = block['hash']
-        blockchain_data['latest_block'] = block['timestamp']
-        blockchain_data['validation_time'] = block['validation_time']
-        blockchain_data['difficulty'] = difficulty
-        
-        save_config()
-    
+        try:
+            blockchain_data = self.app_state.config_store['BLOCKCHAIN_CONF']
+            blockchain_data['previous_hash'] = block['hash']
+            blockchain_data['latest_block'] = block['timestamp']
+            blockchain_data['validation_time'] = block['validation_time']
+            blockchain_data['difficulty'] = difficulty
+            
+            save_config()
+        except Exception as e:
+            print(f"Error updating blockchain data: {e}")
+
     def calculate_checksum(self, data):
-        """Calculate SHA-256 checksum of the given data."""
-        data_string = ujson.dumps(data, sort_keys=True).encode()
-        return hashlib.sha256(data_string).hexdigest()
+        try:
+            """Calculate SHA-256 checksum of the given data."""
+            data_string = ujson.dumps(data, sort_keys=True).encode()
+            return hashlib.sha256(data_string).hexdigest()
+        except Exception as e:
+            print(f"Error calculating checksum: {e}")
+            return ""
 
     def verify_checksum(self, data, checksum):
-        """Verify the given checksum matches the calculated checksum of the data."""
-        return self.calculate_checksum(data) == checksum
-    
+        try:
+            """Verify the given checksum matches the calculated checksum of the data."""
+            return self.calculate_checksum(data) == checksum
+        except Exception as e:
+            print(f"Error verifying checksum: {e}")
+            return False
+
     async def generate_mnemonic(self):
-        mnemonic = Mnemonic("english")
-        words = mnemonic.generate(strength=128)
-        seed = Mnemonic.to_seed(words)
-        return words, seed
+        try:
+            mnemonic = Mnemonic("english")
+            words = mnemonic.generate(strength=128)
+            seed = Mnemonic.to_seed(words)
+            return words, seed
+        except Exception as e:
+            print(f"Error generating mnemonic: {e}")
+            return "", b""
 
     async def generate_keys_from_seed(self, seed):
-        sk = SigningKey.from_string(seed[:32], curve=SECP256k1)
-        vk = sk.get_verifying_key()
-        private_key = sk.to_string().hex()
-        public_key = vk.to_string("uncompressed").hex()
-        address = await self.generate_address(bytes.fromhex(public_key))
-        return private_key, public_key, address
+        try:
+            sk = SigningKey.from_string(seed[:32], curve=SECP256k1)
+            vk = sk.get_verifying_key()
+            private_key = sk.to_string().hex()
+            public_key = vk.to_string("uncompressed").hex()
+            address = await self.generate_address(bytes.fromhex(public_key))
+            return private_key, public_key, address
+        except Exception as e:
+            print(f"Error generating keys from seed: {e}")
+            return "", "", ""
 
     async def generate_address(self, public_key):
-        # Step 1: Perform SHA-256 hashing on the public key
-        sha256_1 = hashlib.sha256(public_key).digest()
+        try:
+            # Step 1: Perform SHA-256 hashing on the public key
+            sha256_1 = hashlib.sha256(public_key).digest()
 
-        # Step 2: Perform RIPEMD-160 hashing on the SHA-256 result
-        ripemd160_hash = hashlib.new('ripemd160', sha256_1).digest()
+            # Step 2: Perform RIPEMD-160 hashing on the SHA-256 result
+            ripemd160_hash = hashlib.new('ripemd160', sha256_1).digest()
 
-        # Step 3: Add the custom prefix (e.g., 0x33 for 'M')
-        prefix_byte = b'\x33'  # Adjust the prefix byte to ensure the address starts with 'M'
-        extended_ripemd160 = prefix_byte + ripemd160_hash
+            # Step 3: Add the custom prefix (e.g., 0x33 for 'M')
+            prefix_byte = b'\x33'  # Adjust the prefix byte to ensure the address starts with 'M'
+            extended_ripemd160 = prefix_byte + ripemd160_hash
 
-        # Step 4: Perform double SHA-256 to calculate the checksum
-        sha256_2 = hashlib.sha256(extended_ripemd160).digest()
-        sha256_3 = hashlib.sha256(sha256_2).digest()
-        checksum = sha256_3[:4]
+            # Step 4: Perform double SHA-256 to calculate the checksum
+            sha256_2 = hashlib.sha256(extended_ripemd160).digest()
+            sha256_3 = hashlib.sha256(sha256_2).digest()
+            checksum = sha256_3[:4]
 
-        # Step 5: Add the checksum to the extended RIPEMD-160 result
-        binary_address = extended_ripemd160 + checksum
+            # Step 5: Add the checksum to the extended RIPEMD-160 result
+            binary_address = extended_ripemd160 + checksum
 
-        # Step 6: Encode the result using Base58
-        base58_address = base58.b58encode(binary_address)
+            # Step 6: Encode the result using Base58
+            base58_address = base58.b58encode(binary_address)
 
-        return base58_address.decode('utf-8')
+            return base58_address.decode('utf-8')
+        except Exception as e:
+            print(f"Error generating address: {e}")
+            return ""
 
     async def new_wallet(self, *args, **kwargs):
         from .scheduler import SchedulerManager  # Scheduler management
-        self.scheduler_manager = SchedulerManager()  # Manages the scheduler
+        try:
+            self.scheduler_manager = SchedulerManager()  # Manages the scheduler
 
-        if await self.has_blockchain():
-            words, seed = await self.generate_mnemonic()
-            private_key, public_key, address = await self.generate_keys_from_seed(seed)
+            if await self.has_blockchain():
+                words, seed = await self.generate_mnemonic()
+                private_key, public_key, address = await self.generate_keys_from_seed(seed)
 
-            # Encrypt the mnemonic and private key with Fernet using the private key as the encryption key
-            address_bytes = base58.b58decode(address)
-            address_hash = hashlib.sha256(address_bytes).digest()
-            encryption_key = base64.urlsafe_b64encode(address_hash)
-            fernet = Fernet(encryption_key)
-            encrypted_words = fernet.encrypt(words.encode()).decode()
-            encrypted_private_key = fernet.encrypt(private_key.encode()).decode()
+                wallet = {
+                    "address": address,
+                    "words": words,
+                    "private_key": private_key,
+                    "public_key": public_key
+                }
 
-            wallet = {
-                "address": address,
-                "words": words,
-                "private_key": private_key,
-                "public_key": public_key
-            }
+                wallet_data = {
+                    "balance": "0",
+                    "balance_pending": "0",
+                    "tx_count": 0,
+                    "tx_data": [],
+                    "last_tx_timestamp": ""
+                }
+
+                self.app_state.wallets[address] = wallet_data
+                
+                if "wallets" not in self.app_state.data_store:
+                    self.app_state.data_store["wallets"] = {}
+                
+                if address not in self.app_state.data_store["wallets"]:
+                    self.app_state.data_store["wallets"][address] = wallet_data
+
+                # Save blockchain wallets
+                self.app_state.data_has_changed = True
+                await self.save_blockchain_wallets(address, wallet_data)
+
+                return wallet
+            else: 
+                return 'Blockchain feature is not active. Use CONFIG SET BLOCKCHAIN 1'
+        except Exception as e:
+            print(f"Error creating new wallet: {e}")
+            return {}
+
+    async def get_wallet(self, *args, **kwargs):
+        try:
+            # Extract address from args
+            address = None
+            if args:
+                for arg in args:
+                    if isinstance(arg, str):
+                        address = arg
+                        break
+            
+            if not address:
+                return "No valid address request"
 
             wallet_data = {
                 "balance": "0",
-                "balance_pending": "0",
-                "tx_count": 0,
+                "balance_pending": "",
+                "tx_count": "",
                 "tx_data": [],
                 "last_tx_timestamp": ""
             }
 
-            self.app_state.wallets[address] = wallet_data
-            
-            if "wallets" not in self.app_state.data_store:
-                self.app_state.data_store["wallets"] = {}
-            
-            if address not in self.app_state.data_store["wallets"]:
-                self.app_state.data_store["wallets"][address] = wallet_data
+            wallet = self.app_state.wallets.get(address)
+            if not wallet:
+                return wallet_data
 
-            # Save blockchain wallets
-            self.app_state.data_has_changed = True
-            await self.save_blockchain_wallets(address, wallet_data)
+            wallet_data["balance"] = wallet.get("balance")
+            wallet_data["balance_pending"] = wallet.get("balance_pending")
+            wallet_data["tx_count"] = wallet.get("tx_count")
+            wallet_data["tx_data"] = wallet.get("tx_data")
+            wallet_data["last_tx_timestamp"] = wallet.get("last_tx_timestamp")
 
-            return wallet
-        else: 
-            return 'Blockchain feature is not active. Use CONFIG SET BLOCKCHAIN 1'
-    
-    async def get_wallet(self, *args, **kwargs):
-        # Extract address from args
-        address = None
-        if args:
-            for arg in args:
-                if isinstance(arg, str):
-                    address = arg
-                    break
-        
-        if not address:
-            return "No valid address found in args"
-
-        wallet = self.app_state.wallets.get(address)
-        if not wallet:
-            return "Wallet not found"
-
-        wallet_data = {
-            "balance": wallet.get("balance"),
-            "balance_pending": wallet.get("balance_pending"),
-            "tx_count": wallet.get("tx_count"),
-            "tx_data": wallet.get("tx_data"),
-            "last_tx_timestamp": wallet.get("last_tx_timestamp"),
-            "created_at": wallet.get("created_at")
-        }
-
-        return wallet_data
+            return wallet_data
+        except Exception as e:
+            print(f"Error getting wallet: {e}")
+            return {}
 
     async def connect_wallet(self, input_value):
         try:
@@ -862,171 +847,202 @@ class BlockchainManager:
                 address = await self.generate_address(bytes.fromhex(public_key))
 
             if address:
-                return {"status": "success", "address": address}
+                return {"status": "success", "address": address, "private_key": private_key}
             else:
                 return {"status": "error", "message": "Wallet not found"}
-
         except Exception as e:
+            print(f"Error connecting wallet: {e}")
             return {"status": "error", "message": str(e)}
     
     async def get_wallet_balance(self, *args, **kwargs):
-        # Extract address from args
-        address = None
-        if args:
-            for arg in args:
-                if isinstance(arg, str):
-                    address = arg
-                    break
-        
-        if not address:
-            return "No valid address found in args"
+        try:
+            # Extract address from args
+            address = None
+            if args:
+                for arg in args:
+                    if isinstance(arg, str):
+                        address = arg
+                        break
+            
+            if not address:
+                return "No valid address found in args"
 
-        wallet = self.app_state.wallets.get(address)
-        if not wallet:
-            return "Wallet not found"
+            wallet = self.app_state.wallets.get(address)
+            if not wallet:
+                return { "balance": "0" }
 
-        wallet_data = {
-            "balance": wallet.get("balance"),
-        }
+            wallet_data = { "balance": wallet.get("balance") }
 
-        return wallet_data
+            return wallet_data
+        except Exception as e:
+            print(f"Error getting wallet balance: {e}")
+            return {}
 
     async def get_blocks(self, options):
-        order_by = options.get('order', 'DESC')
-        latest = options.get('latest', False)
-        limit_start, limit_end = (0, None)
+        try:
+            order_by = options.get('order', 'DESC')
+            latest = options.get('latest', False)
+            limit_start, limit_end = (0, None)
 
-        if 'limit' in options:
-            limits = options['limit'].split(',')
-            if len(limits) == 2:
-                limit_start = int(limits[0])
-                limit_end = int(limits[1])
+            if 'limit' in options:
+                limits = options['limit'].split(',')
+                if len(limits) == 2:
+                    limit_start = int(limits[0])
+                    limit_end = int(limits[1])
 
-        # Generate a unique request_id
-        request_id = str(uuid.uuid4())
+            # Generate a unique request_id
+            request_id = str(uuid.uuid4())
 
-        # Store the request_id in app_state.blockchain_txns_requests with empty data
-        self.app_state.blockchain_txns_requests[request_id] = None
+            # Store the request_id in app_state.blockchain_txns_requests with empty data
+            self.app_state.blockchain_txns_requests[request_id] = None
 
-        # Notify nodes passing the request_id and data
-        notify = asyncio.create_task(self.sub_pub_manager.notify_node("get_blocks", options, request_id, node_type="FULL"))
-        await notify
-        
-        # Wait for resolve_txns to return the result for the request_id
-        resolve = asyncio.create_task(self.resolve_txns(request_id))
-        result = await resolve
+            # Notify nodes passing the request_id and data
+            await self.sub_pub_manager.notify_node("get_blocks", options, request_id, node_type="FULL")
+            
+            # Wait for resolve_txns to return the result for the request_id
+            result = await self.resolve_txns(request_id)
 
-        # Remove the request entry from app_state.blockchain_txns_requests
-        self.app_state.blockchain_txns_requests.pop(request_id, None)
+            # Remove the request entry from app_state.blockchain_txns_requests
+            self.app_state.blockchain_txns_requests.pop(request_id, None)
 
-        return ujson.dumps(result)
+            return ujson.dumps(result)
+        except Exception as e:
+            print(f"Error getting blocks: {e}")
+            return ""
 
     async def get_block(self, *args, **kwargs):
-        data = None
-        if args:
-            for arg in args:
-                if isinstance(arg, str):
-                    data = arg
-                    break
+        try:
+            data = None
+            if args:
+                for arg in args:
+                    if isinstance(arg, str):
+                        data = arg
+                        break
 
-        if not data:
-            return "Not a valid block hash"
+            if not data:
+                return "Not a valid block hash"
 
-        request_id = str(uuid.uuid4())
-        self.app_state.blockchain_txns_requests[request_id] = None
+            request_id = str(uuid.uuid4())
+            self.app_state.blockchain_txns_requests[request_id] = None
 
-        notify = asyncio.create_task(self.sub_pub_manager.notify_node("get_block", data, request_id, node_type="FULL"))
-        await notify
+            await self.sub_pub_manager.notify_node("get_block", data, request_id, node_type="FULL")
 
-        result = await self.resolve_txns(request_id)
-        self.app_state.blockchain_txns_requests.pop(request_id, None)
+            result = await self.resolve_txns(request_id)
+            self.app_state.blockchain_txns_requests.pop(request_id, None)
 
-        return result
+            return result
+        except Exception as e:
+            print(f"Error getting block: {e}")
+            return {}
 
     async def get_txns(self, options):
-        order_by = options.get('order', 'DESC')
-        latest = options.get('latest', False)
-        limit_start, limit_end = (0, None)
+        try:
+            order_by = options.get('order', 'DESC')
+            latest = options.get('latest', False)
+            limit_start, limit_end = (0, None)
 
-        if 'limit' in options:
-            limits = options['limit'].split(',')
-            if len(limits) == 2:
-                limit_start = int(limits[0])
-                limit_end = int(limits[1])
+            if 'limit' in options:
+                limits = options['limit'].split(',')
+                if len(limits) == 2:
+                    limit_start = int(limits[0])
+                    limit_end = int(limits[1])
 
-        # Generate a unique request_id
-        request_id = str(uuid.uuid4())
+            # Generate a unique request_id
+            request_id = str(uuid.uuid4())
 
-        # Store the request_id in app_state.blockchain_txns_requests with empty data
-        self.app_state.blockchain_txns_requests[request_id] = None
+            # Store the request_id in app_state.blockchain_txns_requests with empty data
+            self.app_state.blockchain_txns_requests[request_id] = None
 
-        # Notify nodes passing the request_id and data
-        notify = asyncio.create_task(self.sub_pub_manager.notify_node("get_txns", options, request_id, node_type="FULL"))
-        await notify
+            # Notify nodes passing the request_id and data
+            await self.sub_pub_manager.notify_node("get_txns", options, request_id, node_type="FULL")
 
-        # Wait for resolve_txns to return the result for the request_id
-        result = await self.resolve_txns(request_id)
+            # Wait for resolve_txns to return the result for the request_id
+            result = await self.resolve_txns(request_id)
 
-        # Remove the request entry from app_state.blockchain_txns_requests
-        self.app_state.blockchain_txns_requests.pop(request_id, None)
+            # Remove the request entry from app_state.blockchain_txns_requests
+            self.app_state.blockchain_txns_requests.pop(request_id, None)
 
-        return ujson.dumps(result)
+            return ujson.dumps(result)
+        except Exception as e:
+            print(f"Error getting transactions: {e}")
+            return ""
 
     async def get_txn(self, *args, **kwargs):
-        # Extract data from args
-        data = None
-        if args:
-            for arg in args:
-                if isinstance(arg, str):
-                    data = arg
-                    break
-        
-        if not data:
-            return "Not a valid txid or hash"
+        try:
+            # Extract data from args
+            data = None
+            if args:
+                for arg in args:
+                    if isinstance(arg, str):
+                        data = arg
+                        break
+            
+            if not data:
+                return "Not a valid txid or hash"
 
-        # Generate a unique request_id
-        request_id = str(uuid.uuid4())
+            # Generate a unique request_id
+            request_id = str(uuid.uuid4())
 
-        # Store the request_id in app_state.blockchain_txns_requests with empty data
-        self.app_state.blockchain_txns_requests[request_id] = None
+            # Store the request_id in app_state.blockchain_txns_requests with empty data
+            self.app_state.blockchain_txns_requests[request_id] = None
 
-        # Notify nodes passing the request_id
-        notify = asyncio.create_task(self.sub_pub_manager.notify_node("get_txn", data, request_id, node_type="FULL"))
-        
-        # Wait for resolve_txns to return the result for the request_id
-        resolve = asyncio.create_task(self.resolve_txns(request_id))
-        
-        await notify
-        result = await resolve
+            # Notify nodes passing the request_id
+            await self.sub_pub_manager.notify_node("get_txn", data, request_id, node_type="FULL")
+            
+            # Wait for resolve_txns to return the result for the request_id
+            
+            result = await self.resolve_txns(request_id)
 
-        # Remove the request entry from app_state.blockchain_txns_requests
-        self.app_state.blockchain_txns_requests.pop(request_id, None)
+            # Remove the request entry from app_state.blockchain_txns_requests
+            self.app_state.blockchain_txns_requests.pop(request_id, None)
 
-        return result
-
-    async def resolve_blocks(self, request_id):
-        while True:
-            if request_id in self.app_state.blockchain_blocks_requests and self.app_state.blockchain_blocks_requests[request_id] is not None:
-                return self.app_state.blockchain_blocks_requests[request_id]
-            await asyncio.sleep(0.5)  # Polling interval
+            return result
+        except Exception as e:
+            print(f"Error getting transaction: {e}")
+            return {}
 
     async def submit_block(self, request_id, result):
-        # Update the request data in app_state.blockchain_blocks_requests
-        parsed_result = ujson.loads(result)
-        if request_id in self.app_state.blockchain_blocks_requests:
+        try:
+            # Update the request data in app_state.blockchain_blocks_requests
+            parsed_result = ujson.loads(result)
             self.app_state.blockchain_blocks_requests[request_id] = parsed_result
+        except Exception as e:
+            print(f"Error submitting block: {e}")
+
+    async def resolve_blocks(self):
+        try:
+            # Check if there are any entries in the requests dictionary
+            if self.app_state.blockchain_blocks_requests:
+                # Get the first entry from the dictionary
+                first_key = next(iter(self.app_state.blockchain_blocks_requests))
+                result = self.app_state.blockchain_blocks_requests[first_key]
+                # Remove the first entry from the dictionary
+                self.app_state.blockchain_blocks_requests.pop(first_key)
+                if result is not None:
+                    await self.create_and_save_block(result)
+            return {}
+        except Exception as e:
+            print(f"Error resolving blocks: {e}")
+            return {}
 
     async def resolve_txns(self, request_id):
-        while True:
-            if request_id in self.app_state.blockchain_txns_requests and self.app_state.blockchain_txns_requests[request_id] is not None:
-                return self.app_state.blockchain_txns_requests[request_id]
-            await asyncio.sleep(0.5)  # Polling interval
+        try:
+            while True:
+                if request_id in self.app_state.blockchain_txns_requests and self.app_state.blockchain_txns_requests[request_id] is not None:
+                    return self.app_state.blockchain_txns_requests[request_id]
+                await asyncio.sleep(0.5)  # Polling interval
+        except Exception as e:
+            print(f"Error resolving transactions: {e}")
+            return {}
 
     async def submit_txns_result(self, request_id, result):
-        # Update the request data in app_state.blockchain_txns_requests
-        parsed_result = ujson.loads(result)
-        if request_id in self.app_state.blockchain_txns_requests:
-            self.app_state.blockchain_txns_requests[request_id] = parsed_result
+        try:
+            # Update the request data in app_state.blockchain_txns_requests
+            parsed_result = ujson.loads(result)
+            if request_id in self.app_state.blockchain_txns_requests:
+                self.app_state.blockchain_txns_requests[request_id] = parsed_result
+        except Exception as e:
+            print(f"Error submitting transaction result: {e}")
 
     async def send_internal_txn(self, sender, receiver, amount, data, fee="0"):
         try:
@@ -1105,10 +1121,9 @@ class BlockchainManager:
             await self.save_blockchain_wallets(receiver, receiver_wallet)
 
             return txid
-
         except Exception as e:
-            print(f"Error sending transaction: {e}")
-            return f"Error sending transaction: {e}"
+            print(f"Error sending internal transaction: {e}")
+            return f"Error sending internal transaction: {e}"
     
     async def send_txn(self, private_key, receiver, amount, data, fee="0"):
         try:
@@ -1121,7 +1136,13 @@ class BlockchainManager:
             # Retrieve the sender wallet from the cache
             sender_wallet = self.app_state.wallets.get(sender)
             if not sender_wallet:
-                return {"error": "Sender wallet not found"}
+                sender_wallet = {
+                    "balance": "0",
+                    "balance_pending": "0",
+                    "tx_count": 0,
+                    "tx_data": [],
+                    "last_tx_timestamp": ""
+                }
 
             # Retrieve or initialize the receiver wallet from the cache
             receiver_wallet = self.app_state.wallets.get(receiver)
@@ -1184,7 +1205,6 @@ class BlockchainManager:
             await self.save_blockchain_wallets(receiver, receiver_wallet)
 
             return txid
-
         except Exception as e:
             print(f"Error sending transaction: {e}")
             return f"Error sending transaction: {e}"

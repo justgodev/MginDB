@@ -220,8 +220,7 @@ class CommandProcessor:
 
     async def forward_to_blockchain(self, command):
         if self.websocket_manager.blockchain_websocket:
-            result = await self.websocket_manager.send_to_blockchain_websocket(command)
-            return result
+            await self.websocket_manager.send_to_blockchain_websocket(command)
         else:
             return "ERROR: Secondary WebSocket is not connected."
 
@@ -474,7 +473,7 @@ class DataCommandHandler:
         fee = "0"
                 
         if await self.processor.blockchain_manager.is_blockchain_master():
-            asyncio.create_task(self.processor.blockchain_manager.send_internal_txn(sender, receiver, amount, data, fee))
+            await self.processor.blockchain_manager.send_internal_txn(sender, receiver, amount, data, fee)
         else:
             command = f'SEND_INTERNAL_TXN {sender} {receiver} {amount} {data} {fee}'
             await self.processor.forward_to_blockchain(command)
