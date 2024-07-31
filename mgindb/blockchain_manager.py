@@ -835,11 +835,11 @@ class BlockchainManager:
 
     async def connect_wallet(self, input_value):
         try:
-            if len(input_value.split()) > 1:  # Assuming it's a mnemonic
+            if len(input_value.split()) > 1:  # Mnemonic
                 mnemonic = input_value
                 seed = Mnemonic.to_seed(mnemonic)
                 private_key, public_key, address = await self.generate_keys_from_seed(seed)
-            else:  # Assuming it's a private key
+            else:  # Private key
                 private_key = input_value
                 sk = SigningKey.from_string(bytes.fromhex(private_key), curve=SECP256k1)
                 vk = sk.get_verifying_key()
@@ -1120,7 +1120,6 @@ class BlockchainManager:
             self.app_state.data_has_changed = True
             await self.save_blockchain_wallets(receiver, receiver_wallet)
 
-            return txid
         except Exception as e:
             print(f"Error sending internal transaction: {e}")
             return f"Error sending internal transaction: {e}"

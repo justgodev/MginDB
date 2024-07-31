@@ -437,7 +437,7 @@ class DataCommandHandler:
 
             shard_result = await self.processor.sharding_manager.check_sharding('SET', command, sharding_key)  # Check sharding for SET command
             if shard_result != "ERROR" and shard_result != 'LOCAL':
-                responses.append("OK")
+                responses.append(ujson.dumps({"message": "OK"}))
                 continue
             elif shard_result == "ERROR":
                 responses.append("ERROR: Sharding failed")
@@ -531,7 +531,7 @@ class DataCommandHandler:
                 for key, val in parsed_value.items():
                     nested_parts = parts + [key]
                     await self.set_individual_key(nested_parts, val)  # Set individual keys recursively
-                return "OK"
+                return ujson.dumps({"message": "OK"})
         except ujson.JSONDecodeError:
             parsed_value = value
         return await self.set_individual_key(parts, parsed_value)  # Set the individual key
@@ -566,7 +566,7 @@ class DataCommandHandler:
         if not self.processor.scheduler_manager.is_scheduler_active():
             self.processor.data_manager.save_data()  # Save data if scheduler is not active
 
-        return "OK"
+        return ujson.dumps({"message": "OK"})
 
     async def del_command(self, args):
         """Handles the DEL command."""
@@ -587,7 +587,7 @@ class DataCommandHandler:
 
             shard_result = await self.processor.sharding_manager.check_sharding('DEL', command, shard_key)  # Check sharding for DEL command
             if shard_result not in ["ERROR", "LOCAL"]:
-                responses.append("OK")
+                responses.append(ujson.dumps({"message": "OK"}))
                 continue
             elif shard_result == "ERROR":
                 responses.append(shard_result)
@@ -663,7 +663,7 @@ class DataCommandHandler:
                 # Invalidate cache entries related to the base key
                 await self.processor.cache_handler.remove_from_cache(base_key)  # Invalidate cache entries
                 
-                return "OK"
+                return ujson.dumps({"message": "OK"})
             else:
                 return "ERROR: Key does not exist"
         except KeyError:
@@ -694,7 +694,7 @@ class DataCommandHandler:
             shard_result = await self.processor.sharding_manager.check_sharding(shard_command, command.strip(), shard_key)  # Check sharding for INCR/DECR command
 
             if shard_result != "ERROR" and shard_result != 'LOCAL':
-                responses.append("OK")
+                responses.append(ujson.dumps({"message": "OK"}))
                 continue
             elif shard_result == "ERROR":
                 responses.append(shard_result)
@@ -718,7 +718,7 @@ class DataCommandHandler:
 
             key = ":".join(keys)
             await self.processor.sub_pub_manager.notify_subscribers(key, new_data)  # Notify subscribers
-            responses.append("OK")
+            responses.append(ujson.dumps({"message": "OK"}))
 
             if await self.processor.replication_manager.has_replication_is_replication_master():
                 replication_command = 'INCR' if increment else 'DECR'
@@ -738,7 +738,7 @@ class DataCommandHandler:
 
         shard_result = await self.processor.sharding_manager.check_sharding('RENAME', path, sharding_key)  # Check sharding for RENAME command
         if shard_result != "ERROR" and shard_result != 'LOCAL':
-            return "OK"
+            return ujson.dumps({"message": "OK"})
         elif shard_result == "ERROR":
             return "ERROR: Sharding failed"
 
