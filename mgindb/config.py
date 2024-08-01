@@ -47,10 +47,17 @@ def get_default_config():
         "SHARDS": [],  # Default shards
         "BLOCKCHAIN": "0",  # Blockchain
         "BLOCKCHAIN_TYPE": "",  # Blockchain Type (MASTER OR SLAVE)
+        "BLOCKCHAIN_NAME": "",  # Blockchain name
+        "BLOCKCHAIN_DESCRIPTION": "",  # Blockchain description
+        "BLOCKCHAIN_LOGO": "",  # Blockchain logo
+        "BLOCKCHAIN_SYMBOL": "",  # Blockchain symbol
         "BLOCKCHAIN_DECIMAL": "8",  # Blockchain decimal
         "BLOCKCHAIN_SUPPLY": "",  # Blockchain supply
         "BLOCKCHAIN_MAX_SUPPLY": "",  # Blockchain max supply
+        "BLOCKCHAIN_CAN_MINT": False,  # Blockchain can mint
+        "BLOCKCHAIN_CAN_BURN": False,  # Blockchain can burn
         "BLOCKCHAIN_SETUP_FEE": "",  # Blockchain setup fee
+        "BLOCKCHAIN_CONTRACT_FEE": "5000",  # Blockchain contract fee
         "BLOCKCHAIN_VALIDATOR_REWARD": "",  # Blockchain validator reward
         "BLOCKCHAIN_SYNC_CHUNKS": "100",  # Blockchain sync chunks
         "BLOCKCHAIN_BLOCK_MAX_SIZE": "100",  # Blockchain block max size

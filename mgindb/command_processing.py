@@ -111,11 +111,14 @@ class CommandProcessor:
             'SUBMIT_TXNS_RESULT': self.blockchain_manager.submit_txns_result,
             'SEND_TXN': self.blockchain_manager.send_txn,
             'SEND_INTERNAL_TXN': self.blockchain_manager.send_internal_txn,
-            'SUBMIT_TXN': self.blockchain_manager.submit_txn,
             'UPLOAD_FILE': self.upload_manager.save_file,
             'READ_FILE': self.upload_manager.read_file,
             'NEW_2FA': self.two_factor_manager.generate,
-            'VERIFY_2FA': self.two_factor_manager.verify
+            'VERIFY_2FA': self.two_factor_manager.verify,
+            'CREATE_CONTRACT': self.blockchain_manager.create_contract,
+            'GET_CONTRACT': self.blockchain_manager.get_contract,
+            'MINT': self.blockchain_manager.mint,
+            'BURN': self.blockchain_manager.burn,
         }
 
         if command in commands:
@@ -123,7 +126,8 @@ class CommandProcessor:
             if asyncio.iscoroutinefunction(func):
                 if command == 'UPLOAD_FILE':
                     key, data = args.split(' ', 1)
-                    return await func(key, data.encode())
+                elif command in {'SEND_TXN', 'SEND_INTERNAL_TXN', 'CREATE_CONTRACT', 'GET_CONTRACT', 'MINT', 'BURN'}:
+                    return await func(ujson.loads(args))
                 elif command in {'INCR', 'DECR'}:
                     return await func(args, True if command == 'INCR' else False)
                 elif command in {'CONFIG', 'SUB', 'UNSUB', 'MONITOR'}:
@@ -156,25 +160,14 @@ class CommandProcessor:
                         order_value = args.split('ORDERBY')[1].strip().split()[0].strip('()')
                         options['order'] = order_value
                     return await func(options)
-                elif command == 'SEND_INTERNAL_TXN':
-                    parts = args.split(' ', 4)
-                    if len(parts) != 5:
-                        return "Error: Invalid number of arguments for SEND_INTERNAL_TXN"
-                    sender, receiver, amount, data, fee = parts
-                    return await func(sender, receiver, amount, data, fee)
-                elif command == 'SEND_TXN':
-                    parts = args.split(' ', 4)
-                    if len(parts) < 4:
-                        return "Error: Invalid number of arguments for SEND_TXN"
-                    private_key, receiver, amount, data = parts[:4]
-                    fee = parts[4] if len(parts) == 5 else "0"
-                    return await func(private_key, receiver, amount, data, fee)
                 else:
                     return await func(args)
             else:
                 if command == 'UPLOAD_FILE':
                     key, data = args.split(' ', 1)
                     return await self.run_in_executor('thread', func, key, data.encode())
+                elif command in {'SEND_TXN', 'SEND_INTERNAL_TXN', 'CREATE_CONTRACT', 'GET_CONTRACT', 'MINT', 'BURN'}:
+                    return await self.run_in_executor('thread', func, ujson.loads(args))
                 elif command in {'INCR', 'DECR'}:
                     return await self.run_in_executor('thread', func, args, True if command == 'INCR' else False)
                 elif command in {'CONFIG', 'SUB', 'UNSUB', 'MONITOR'}:
@@ -185,12 +178,6 @@ class CommandProcessor:
                 elif command == 'VERIFY_2FA':
                     secret, code = args.split(' ')
                     return await self.run_in_executor('thread', func, secret, code)
-                elif command == 'SEND_INTERNAL_TXN':
-                    parts = args.split(' ', 4)
-                    if len(parts) != 5:
-                        return "Error: Invalid number of arguments for SEND_INTERNAL_TXN"
-                    sender, receiver, amount, data, fee = parts
-                    return await self.run_in_executor('thread', func, sender, receiver, amount, data, fee)
                 elif command == 'SUBMIT_TXNS_RESULT' or command == 'SUBMIT_BLOCK':
                     request_id, data = args.split(' ', 1)
                     return await self.run_in_executor('thread', func, request_id, data)
@@ -466,16 +453,19 @@ class DataCommandHandler:
         return '\n'.join(responses)
     
     async def add_tx_to_blockchain(self, sender_address, receiver_address, command):
-        sender = sender_address
-        receiver = receiver_address
-        amount = "0"
-        data = ""
-        fee = "0"
+        payload = {
+            "sender": sender_address,
+            "receiver": receiver_address,
+            "amount": "0",
+            "symbol": "MGDB",
+            "data": "",
+            "fee": "0"
+        }
                 
         if await self.processor.blockchain_manager.is_blockchain_master():
-            await self.processor.blockchain_manager.send_internal_txn(sender, receiver, amount, data, fee)
+            await self.processor.blockchain_manager.send_internal_txn(payload)
         else:
-            command = f'SEND_INTERNAL_TXN {sender} {receiver} {amount} {data} {fee}'
+            command = f'SEND_INTERNAL_TXN {ujson.dumps(payload)}'
             await self.processor.forward_to_blockchain(command)
 
     async def set_keys_wildcard(self, base_path, last_key, value, data_store):
