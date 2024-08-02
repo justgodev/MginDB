@@ -61,10 +61,10 @@ class WebSocketManager:
 
     async def process_blockchain_message(self, message):
         try:
-            print(f"Processing blockchain message: {message}")
+            #print(f"Processing blockchain message: {message}")
             for session in self.sessions.values():
                 asyncio.create_task(session.websocket.send(message))
-                print(f"Message forwarded to main WebSocket session: {message}")
+                #print(f"Message forwarded to main WebSocket session: {message}")
         except Exception as e:
             print(f"Error processing blockchain message: {e}")
 
@@ -72,7 +72,7 @@ class WebSocketManager:
         if self.blockchain_websocket:
             try:
                 asyncio.create_task(self.blockchain_websocket.send(message))
-                print(f"Message sent to Blockchain WebSocket: {message}")
+                #print(f"Message sent to Blockchain WebSocket: {message}")
             except Exception as e:
                 print(f"Failed to send message to Blockchain WebSocket: {e}")
                 return f"Error: {e}"
@@ -145,7 +145,7 @@ class WebSocketSession:
     async def listen_for_messages(self):
         try:
             async for message in self.websocket:
-                print(f'Socket Message received: {message}')
+                #print(f'Socket Message received: {message}')
                 # Create a task to put the message in the queue to avoid blocking
                 asyncio.create_task(self.enqueue_message(message))
         except websockets.exceptions.ConnectionClosed:
@@ -160,16 +160,16 @@ class WebSocketSession:
     async def enqueue_message(self, message):
         try:
             await self.message_queue.put(message)
-            print(f'Message put in queue: {message}')
+            #print(f'Message put in queue: {message}')
         except Exception as e:
             print(f"Error enqueuing message: {e}")
 
     async def process_messages(self):
-        print(f"Starting to process messages for session ID: {self.sid}")
+        #print(f"Starting to process messages for session ID: {self.sid}")
         while not self.stop_event.is_set() or not self.message_queue.empty():
             if not self.message_queue.empty():
                 message = await self.message_queue.get()
-                print(f'Message dequeued for processing: {message}')
+                #print(f'Message dequeued for processing: {message}')
                 task = asyncio.create_task(self.process_message(message))
                 self.processing_tasks.add(task)
                 task.add_done_callback(self.processing_tasks.discard)
@@ -179,24 +179,24 @@ class WebSocketSession:
 
     async def process_message(self, message):
         try:
-            print(f"Processing message: {message}")
+            #print(f"Processing message: {message}")
 
             # Check if the message is compressed (assuming it's base64-encoded and then compressed)
             if self.is_compressed(message):
                 message = self.decompress_message(message)
-                print(f"Decompressed message: {message}")
+                #print(f"Decompressed message: {message}")
 
             command = asyncio.create_task(self.command_processor.process_command(message, self.sid, self.websocket))
             response_command = await command
             if response_command:
                 response = ujson.dumps(response_command) if isinstance(response_command, dict) else str(response_command)
                 asyncio.create_task(self.websocket.send(response))
-                print(f'Response sent: {response}')
+                #print(f'Response sent: {response}')
         except Exception as e:
             print(f"Error processing command for session ID {self.sid}: {e}")
         finally:
             self.message_queue.task_done()
-            print(f'Message processing completed: {message}')
+            #print(f'Message processing completed: {message}')
 
     def is_compressed(self, message):
         try:
