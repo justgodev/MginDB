@@ -40,5 +40,15 @@
     "BLOCKCHAIN_SYNC_CHUNKS": "100",
     "BLOCKCHAIN_BLOCK_MAX_SIZE": "10",
     "BLOCKCHAIN_BLOCK_AUTO_CREATION_INTERVAL": "120",
-    "BLOCKCHAIN_CONF": {}
+    "BLOCKCHAIN_CONF": {
+        "genesis_address": "Meo24ytfwdvUEz1tdNEQwhXsJ2UPg9diK7",
+        "genesis_private_key": "94950d4a9470650c1eafddb5d4e955c7130e6a28490f075370773fe245d0ec00",
+        "genesis_contract_hash": "969f2b2e97bb0a1031d1442bf6f3eda5e8da1e789f49ea23ba1264d277ca35c0",
+        "chain_length": 1,
+        "previous_hash": "0bbab374119a5729fb953b6db6aecff2f2f8c9a9b583f594e96ba1e390e4fd0a",
+        "latest_block": 1722654973,
+        "validation_time": 0,
+        "difficulty": 1,
+        "fee": "1"
+    }
 }
