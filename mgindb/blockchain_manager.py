@@ -532,10 +532,8 @@ class BlockchainManager:
             # Update sender wallet
             if sender_wallet:
                 try:
-                    print('Action', txn["action"])
                     if txn["action"] not in ["create_contract", "mint"]:
-                        print('Update Sender Wallet')
-                        sender_wallet["balances"][symbol]["balance_pending"] = str(int(sender_wallet["balances"][symbol]["balance_pending"]) - amount)
+                        sender_wallet["balances"][symbol]["balance_pending"] = str(int(sender_wallet["balances"][symbol]["balance_pending"]) + amount)
 
                     sender_wallet["balances"][blockchain_symbol]["balance_pending"] = str(int(sender_wallet["balances"][blockchain_symbol]["balance_pending"]) + fee)
                     sender_wallet["last_tx_timestamp"] = mined_block["timestamp"]
