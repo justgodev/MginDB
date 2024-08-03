@@ -343,6 +343,8 @@ class BlockchainManager:
                 "symbol": genesis_contract["symbol"],
                 "data": "",
                 "fee": "0",
+                "action": "contract_mint",
+                "contract_hash": genesis_contract_hash,
                 "timestamp": int(time.time()),
                 "confirmed": True
             }
@@ -456,9 +458,9 @@ class BlockchainManager:
                 await self._process_wallets(mined_block, txn, validator_rewards)
 
                 # Handle mint and burn transactions
-                if txn.get("action") == "mint":
+                if txn.get("action") == "contract_mint":
                     await self._process_mint(txn)
-                elif txn.get("action") == "burn":
+                elif txn.get("action") == "contract_burn":
                     await self._process_burn(txn)
         
             # Create a single transaction per validator with the total rewards
@@ -532,7 +534,7 @@ class BlockchainManager:
             # Update sender wallet
             if sender_wallet:
                 try:
-                    if txn["action"] not in ["create_contract", "mint"]:
+                    if txn["action"] not in ["create_contract", "contract_mint"]:
                         sender_wallet["balances"][symbol]["balance_pending"] = str(int(sender_wallet["balances"][symbol]["balance_pending"]) + amount)
 
                     sender_wallet["balances"][blockchain_symbol]["balance_pending"] = str(int(sender_wallet["balances"][blockchain_symbol]["balance_pending"]) + fee)
@@ -1273,7 +1275,7 @@ class BlockchainManager:
             amount = txn_data["amount"]
             symbol = txn_data["symbol"]
             data = txn_data["data"]
-            fee = txn_data.get("fee", "0")
+            fee = txn_data.get("fee", self.app_state.config_store["BLOCKCHAIN_CONF"]["fee"])
             action = txn_data.get("action", "")
             contract_hash = txn_data.get("contract_hash", "")
 
@@ -1355,7 +1357,7 @@ class BlockchainManager:
                     burn_data = {
                         "private_key": genesis_private_key,
                         "amount": fee,
-                        "action": "burn",
+                        "action": "contract_burn",
                         "contract_hash": self.app_state.config_store["BLOCKCHAIN_CONF"]["genesis_contract_hash"],
                     }
                     await self.burn(burn_data)
@@ -1375,8 +1377,8 @@ class BlockchainManager:
                     await self.save_blockchain_wallets(genesis_address, genesis_wallet)
 
             # Update the receiver's wallet
-            receiver_symbol_balance = int(receiver_wallet["balances"][symbol]["balance"])
-            receiver_wallet["balances"][symbol]["balance_pending"] = str(receiver_symbol_balance + amount)
+            receiver_symbol_balance_pending = int(receiver_wallet["balances"][symbol]["balance_pending"])
+            receiver_wallet["balances"][symbol]["balance_pending"] = str(receiver_symbol_balance_pending + amount)
 
             receiver_wallet["tx_count"] += 1
             receiver_wallet["tx_data"].append(transaction)
@@ -1432,8 +1434,12 @@ class BlockchainManager:
             contract_txid_response = await self.send_txn(contract_txn_data, is_contract_action=True)
             
             if "txid" in contract_txid_response:
+                blockchain_decimal = int(self.app_state.config_store["BLOCKCHAIN_DECIMAL"])
+                multiplier = 10 ** blockchain_decimal
                 contract_hash = await self.hash_data(contract_data)
                 contract_data["contract_hash"] = contract_hash
+                contract_data["supply"] = int(float(contract_data["supply"]) * multiplier)
+                contract_data["max_supply"] = int(float(contract_data["max_supply"]) * multiplier)
                 contract_data["created_at"] = int(time.time())
                 contract_data["updated_at"] = int(time.time())
                 
@@ -1448,72 +1454,111 @@ class BlockchainManager:
 
     async def get_contract(self, contract_data):
         try:
-            contract_hash = contract_data["contract_hash"]
-            self.cursor.execute('''
-                SELECT * FROM contracts WHERE contract_hash=?
-            ''', (contract_hash,))
-            contract = self.cursor.fetchone()
-            if contract:
-                contract_dict = {
-                    "contract_hash": contract[0],
-                    "owner_address": contract[1],
-                    "name": contract[2],
-                    "description": contract[3],
-                    "logo": contract[4],
-                    "symbol": contract[5],
-                    "supply": contract[6],
-                    "max_supply": contract[7],
-                    "can_mint": contract[8],
-                    "can_burn": contract[9],
-                    "created_at": contract[10],
-                    "updated_at": contract[11]
-                }
-                return {"status": "success", "contract": contract_dict}
+            contract_hash = contract_data.get("contract_hash")
+            private_key = contract_data.get("private_key")
+            owner_address = None
+
+            if private_key:
+                owner_address = await self.get_address_from_private_key(private_key)
+
+            if contract_hash:
+                self.cursor.execute('''
+                    SELECT * FROM contracts WHERE contract_hash=?
+                ''', (contract_hash,))
+                contract = self.cursor.fetchone()
+                if contract:
+                    contract_dict = {
+                        "contract_hash": contract[0],
+                        "owner_address": contract[1],
+                        "name": contract[2],
+                        "description": contract[3],
+                        "logo": contract[4],
+                        "symbol": contract[5],
+                        "supply": contract[6],
+                        "max_supply": contract[7],
+                        "can_mint": bool(contract[8]),
+                        "can_burn": bool(contract[9]),
+                        "created_at": contract[10],
+                        "updated_at": contract[11]
+                    }
+                    return {"status": "success", "contract": contract_dict}
+                else:
+                    return {"status": "error", "message": "Contract not found"}
+
+            elif owner_address:
+                self.cursor.execute('''
+                    SELECT * FROM contracts WHERE owner_address=?
+                ''', (owner_address,))
+                contracts = self.cursor.fetchall()
+                if contracts:
+                    contracts_list = []
+                    for contract in contracts:
+                        contract_dict = {
+                            "contract_hash": contract[0],
+                            "owner_address": contract[1],
+                            "name": contract[2],
+                            "description": contract[3],
+                            "logo": contract[4],
+                            "symbol": contract[5],
+                            "supply": contract[6],
+                            "max_supply": contract[7],
+                            "can_mint": contract[8],
+                            "can_burn": contract[9],
+                            "created_at": contract[10],
+                            "updated_at": contract[11]
+                        }
+                        contracts_list.append(contract_dict)
+                    return {"status": "success", "contracts": contracts_list}
+                else:
+                    return {"status": "error", "message": "No contracts found for this owner"}
             else:
-                return {"status": "error", "message": "Contract not found"}
+                return {"status": "error", "message": "Either contract_hash or private_key must be provided"}
         except Exception as e:
             print(f"Error getting contract: {e}")
             return {"status": "error", "message": str(e)}
 
-    async def mint(self, mint_data):
+    async def contract_mint(self, mint_data):
         try:
-            contract_hash = mint_data["contract_hash"]
-            receiver = mint_data["receiver"]
-            amount = mint_data["amount"]
             private_key = mint_data["private_key"]
+            owner_address = await self.get_address_from_private_key(private_key)
+
+            contract_hash = mint_data["contract_hash"]
+            blockchain_decimal = int(self.app_state.config_store["BLOCKCHAIN_DECIMAL"])
+            multiplier = 10 ** blockchain_decimal
+            amount = int(float(mint_data["amount"]) * multiplier)
             
             self.cursor.execute('''
                 SELECT * FROM contracts WHERE contract_hash=?
             ''', (contract_hash,))
-            contract = self.cursor.fetchone()
-            
-            if not contract:
+            contract_tuple = self.cursor.fetchone()
+
+            if not contract_tuple:
                 return {"status": "error", "message": "Contract not found"}
 
-            if not contract[7]:  # can_mint
-                return {"status": "error", "message": "Minting not allowed for this contract"}
-
-            if contract[5] + amount > contract[6]:  # supply + amount > max_supply
-                return {"status": "error", "message": "Amount exceeds max supply"}
-
-            # Decode the private key to get the address
-            owner_address = await self.get_address_from_private_key(private_key)
+            columns = [col[0] for col in self.cursor.description]
+            contract = dict(zip(columns, contract_tuple))
 
             # Check if the decoded address matches the contract owner address
-            if owner_address != contract[1]:
+            if owner_address != contract['owner_address']:
                 return {"status": "error", "message": "Unauthorized mint operation"}
 
-            symbol = contract[4]
+            if not bool(contract['can_mint']):  # can_mint
+                return {"status": "error", "message": "Minting not allowed for this contract"}
+
+            if contract['supply'] + amount > contract['max_supply']:  # supply + amount > max_supply
+                return {"status": "error", "message": "Amount exceeds max supply"}
+
+            symbol = contract['symbol']
 
             # Record the mint transaction
             mint_txn_data = {
                 "private_key": private_key,
-                "receiver": receiver,
-                "amount": amount,
+                "receiver": owner_address,
+                "amount": str(amount / multiplier),
                 "symbol": symbol,
                 "data": "Mint transaction",
                 "fee": "0",  # No fee for mint transactions
-                "action": "mint",
+                "action": "contract_mint",
                 "contract_hash": contract_hash
             }
             mint_txn_response = await self.send_txn(mint_txn_data, is_contract_action=True)
@@ -1526,36 +1571,39 @@ class BlockchainManager:
             print(f"Error minting: {e}")
             return {"status": "error", "message": str(e)}
 
-    async def burn(self, burn_data):
+    async def contract_burn(self, burn_data):
         try:
-            contract_hash = burn_data["contract_hash"]
-            amount = burn_data["amount"]
             private_key = burn_data["private_key"]
+            owner_address = await self.get_address_from_private_key(private_key)
+            contract_hash = burn_data["contract_hash"]
+            blockchain_decimal = int(self.app_state.config_store["BLOCKCHAIN_DECIMAL"])
+            multiplier = 10 ** blockchain_decimal
+            amount = int(float(burn_data["amount"]) * multiplier)
             
             self.cursor.execute('''
                 SELECT * FROM contracts WHERE contract_hash=?
             ''', (contract_hash,))
-            contract = self.cursor.fetchone()
+            contract_tuple = self.cursor.fetchone()
             
-            if not contract:
+            if not contract_tuple:
                 return {"status": "error", "message": "Contract not found"}
 
-            if not contract[8]:  # can_burn
-                return {"status": "error", "message": "Burning not allowed for this contract"}
-
-            # Decode the private key to get the address
-            owner_address = await self.get_address_from_private_key(private_key)
+            columns = [col[0] for col in self.cursor.description]
+            contract = dict(zip(columns, contract_tuple))
 
             # Check if the decoded address matches the contract owner address
-            if owner_address != contract[1]:
+            if owner_address != contract['owner_address']:
                 return {"status": "error", "message": "Unauthorized burn operation"}
+
+            if not bool(contract['can_burn']):  # can_burn
+                return {"status": "error", "message": "Burning not allowed for this contract"}
 
             # Check owner's wallet balance
             owner_wallet = self.app_state.wallets.get(owner_address)
             if not owner_wallet:
                 return {"status": "error", "message": "Owner wallet not found"}
 
-            symbol = contract[4]
+            symbol = contract['symbol']
             if symbol not in owner_wallet["balances"]:
                 return {"status": "error", "message": f"{symbol} balance not found in owner's wallet"}
 
@@ -1566,11 +1614,11 @@ class BlockchainManager:
             burn_txn_data = {
                 "private_key": private_key,
                 "receiver": "",  # No receiver for burn transactions
-                "amount": amount,
+                "amount": str(amount / multiplier),
                 "symbol": symbol,
                 "data": "Burn transaction",
                 "fee": "0",  # No fee for burn transactions
-                "action": "burn",
+                "action": "contract_burn",
                 "contract_hash": contract_hash
             }
             burn_txn_response = await self.send_txn(burn_txn_data, is_contract_action=False)

@@ -117,8 +117,8 @@ class CommandProcessor:
             'VERIFY_2FA': self.two_factor_manager.verify,
             'CREATE_CONTRACT': self.blockchain_manager.create_contract,
             'GET_CONTRACT': self.blockchain_manager.get_contract,
-            'MINT': self.blockchain_manager.mint,
-            'BURN': self.blockchain_manager.burn,
+            'MINT_CONTRACT': self.blockchain_manager.contract_mint,
+            'BURN_CONTRACT': self.blockchain_manager.contract_burn,
         }
 
         if command in commands:
@@ -126,7 +126,7 @@ class CommandProcessor:
             if asyncio.iscoroutinefunction(func):
                 if command == 'UPLOAD_FILE':
                     key, data = args.split(' ', 1)
-                elif command in {'SEND_TXN', 'SEND_INTERNAL_TXN', 'CREATE_CONTRACT', 'GET_CONTRACT', 'MINT', 'BURN'}:
+                elif command in {'SEND_TXN', 'SEND_INTERNAL_TXN', 'CREATE_CONTRACT', 'GET_CONTRACT', 'MINT_CONTRACT', 'BURN_CONTRACT'}:
                     return await func(ujson.loads(args))
                 elif command in {'INCR', 'DECR'}:
                     return await func(args, True if command == 'INCR' else False)
@@ -166,7 +166,7 @@ class CommandProcessor:
                 if command == 'UPLOAD_FILE':
                     key, data = args.split(' ', 1)
                     return await self.run_in_executor('thread', func, key, data.encode())
-                elif command in {'SEND_TXN', 'SEND_INTERNAL_TXN', 'CREATE_CONTRACT', 'GET_CONTRACT', 'MINT', 'BURN'}:
+                elif command in {'SEND_TXN', 'SEND_INTERNAL_TXN', 'CREATE_CONTRACT', 'GET_CONTRACT', 'MINT_CONTRACT', 'BURN_CONTRACT'}:
                     return await self.run_in_executor('thread', func, ujson.loads(args))
                 elif command in {'INCR', 'DECR'}:
                     return await self.run_in_executor('thread', func, args, True if command == 'INCR' else False)
