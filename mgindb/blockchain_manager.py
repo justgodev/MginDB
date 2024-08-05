@@ -1469,6 +1469,9 @@ class BlockchainManager:
                 "fee": self.app_state.config_store["BLOCKCHAIN_CONTRACT_FEE"],
                 "action": "create_contract",
             }
+
+            contract_hash = await self.hash_data(contract_data)
+            contract_txn_data["contract_hash"] = contract_hash
             
             # Send the transaction to broadcast the contract creation
             contract_txid_response = await self.send_txn(contract_txn_data, is_contract_action=True)
@@ -1476,7 +1479,6 @@ class BlockchainManager:
             if "txid" in contract_txid_response:
                 blockchain_decimal = int(self.app_state.config_store["BLOCKCHAIN_DECIMAL"])
                 multiplier = 10 ** blockchain_decimal
-                contract_hash = await self.hash_data(contract_data)
                 contract_data["contract_hash"] = contract_hash
                 contract_data["supply"] = int(float(contract_data["supply"]) * multiplier)
                 contract_data["max_supply"] = int(float(contract_data["max_supply"]) * multiplier)
