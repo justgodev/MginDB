@@ -101,6 +101,7 @@ class CommandProcessor:
             'GET_WALLET': self.blockchain_manager.get_wallet,
             'CONNECT_WALLET': self.blockchain_manager.connect_wallet,
             'GET_WALLET_BALANCE': self.blockchain_manager.get_wallet_balance,
+            'GET_FEE': self.blockchain_manager.get_fee,
             'GET_TXN': self.blockchain_manager.get_txn,
             'GET_TXNS': self.blockchain_manager.get_txns,
             'GET_BLOCKS': self.blockchain_manager.get_blocks,
@@ -111,14 +112,14 @@ class CommandProcessor:
             'SUBMIT_TXNS_RESULT': self.blockchain_manager.submit_txns_result,
             'SEND_TXN': self.blockchain_manager.send_txn,
             'SEND_INTERNAL_TXN': self.blockchain_manager.send_internal_txn,
-            'UPLOAD_FILE': self.upload_manager.save_file,
-            'READ_FILE': self.upload_manager.read_file,
-            'NEW_2FA': self.two_factor_manager.generate,
-            'VERIFY_2FA': self.two_factor_manager.verify,
             'CREATE_CONTRACT': self.blockchain_manager.create_contract,
             'GET_CONTRACT': self.blockchain_manager.get_contract,
             'MINT_CONTRACT': self.blockchain_manager.contract_mint,
             'BURN_CONTRACT': self.blockchain_manager.contract_burn,
+            'UPLOAD_FILE': self.upload_manager.save_file,
+            'READ_FILE': self.upload_manager.read_file,
+            'NEW_2FA': self.two_factor_manager.generate,
+            'VERIFY_2FA': self.two_factor_manager.verify
         }
 
         if command in commands:
@@ -209,7 +210,7 @@ class CommandProcessor:
         if self.websocket_manager.blockchain_websocket:
             await self.websocket_manager.send_to_blockchain_websocket(command)
         else:
-            return "ERROR: Secondary WebSocket is not connected."
+            return "ERROR: Blockchain WebSocket is not connected."
 
     async def handle_result(self, result):
         """Handles the result of a command execution."""
@@ -457,7 +458,7 @@ class DataCommandHandler:
             "sender": sender_address,
             "receiver": receiver_address,
             "amount": "0",
-            "symbol": "MGDB",
+            "symbol": self.app_state.config_store["BLOCKCHAIN_SYMBOL"],
             "data": "",
             "fee": "0"
         }

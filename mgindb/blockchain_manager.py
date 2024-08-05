@@ -305,6 +305,10 @@ class BlockchainManager:
             wallet = await self.new_wallet()
             genesis_address = wallet.get("address")
             genesis_private_key = wallet.get("private_key")
+            initial_supply = int(self.app_state.config_store.get("BLOCKCHAIN_INITIAL_SUPPLY", "0"))
+            max_supply = int(self.app_state.config_store.get("BLOCKCHAIN_MAX_SUPPLY", "0"))
+            can_mint = self.app_state.config_store.get("BLOCKCHAIN_CAN_MINT", False)
+            can_burn = self.app_state.config_store.get("BLOCKCHAIN_CAN_BURN", False)
             
             """Create the genesis contract"""
             genesis_contract = {
@@ -313,10 +317,10 @@ class BlockchainManager:
                 "description": self.app_state.config_store.get("BLOCKCHAIN_DESCRIPTION"),
                 "logo": self.app_state.config_store.get("BLOCKCHAIN_LOGO"),
                 "symbol": self.app_state.config_store.get("BLOCKCHAIN_SYMBOL"),
-                "supply": int(self.app_state.config_store.get("BLOCKCHAIN_SUPPLY", "0")),
-                "max_supply": int(self.app_state.config_store.get("BLOCKCHAIN_MAX_SUPPLY", "0")),
-                "can_mint": self.app_state.config_store.get("BLOCKCHAIN_CAN_MINT", False),
-                "can_burn": self.app_state.config_store.get("BLOCKCHAIN_CAN_BURN", False)
+                "supply": initial_supply,
+                "max_supply": max_supply,
+                "can_mint": can_mint,
+                "can_burn": can_burn
             }
             
             genesis_contract_hash = await self.hash_data(genesis_contract)
@@ -397,16 +401,17 @@ class BlockchainManager:
                 await self.save_blockchain_wallets(genesis_address, genesis_wallet)
 
             # Initialize blockchain configuration
-            self.app_state.config_store["BLOCKCHAIN_CONF"] = {
-                "genesis_address": genesis_address,
-                "genesis_private_key": genesis_private_key,
-                "genesis_contract_hash": genesis_contract_hash,
-                "chain_length": 1,
-                "previous_hash": genesis_block["hash"],
-                "latest_block": int(genesis_block["timestamp"]),
-                "validation_time": genesis_block["validation_time"],
-                "difficulty": genesis_block["difficulty"],
-                "fee": self.app_state.config_store["BLOCKCHAIN_SETUP_FEE"]
+            self.app_state.config_store["BLOCKCHAIN_DATA"] = {
+                "GENESIS_TIMESTAMP": int(time.time()),
+                "GENESIS_ADDRESS": genesis_address,
+                "GENESIS_PRIVATE_KEY": genesis_private_key,
+                "GENESIS_CONTRACT_HASH": genesis_contract_hash,
+                "CHAIN_LENGTH": 1,
+                "PREVIOUS_HASH": genesis_block["hash"],
+                "LATEST_BLOCK": int(genesis_block["timestamp"]),
+                "VALIDATION_TIME": genesis_block["validation_time"],
+                "DIFFICULTY": genesis_block["difficulty"],
+                "FEE": self.app_state.config_store["BLOCKCHAIN_SETUP_FEE"]
             }
             save_config()
         except Exception as e:
@@ -431,15 +436,14 @@ class BlockchainManager:
 
     async def create_and_save_block(self, mined_block):
         try:
-            print("creating and saving block")
             # Blockchain details
-            blockchain_data = self.app_state.config_store["BLOCKCHAIN_CONF"]
-            chain_length = blockchain_data["chain_length"]
-            previous_hash = blockchain_data["previous_hash"]
+            blockchain_data = self.app_state.config_store["BLOCKCHAIN_DATA"]
+            chain_length = blockchain_data["CHAIN_LENGTH"]
+            previous_hash = blockchain_data["PREVIOUS_HASH"]
 
             mined_block["index"] = chain_length
             mined_block["previous_hash"] = previous_hash
-            blockchain_data["chain_length"] = chain_length + 1
+            blockchain_data["CHAIN_LENGTH"] = chain_length + 1
 
             # Save the block to the blockchain
             self.app_state.blockchain.append(mined_block)
@@ -449,22 +453,23 @@ class BlockchainManager:
             new_difficulty = self.adjust_difficulty(mined_block["validation_time"])
             await self.update_blockchain_data(mined_block, new_difficulty)
 
-            # Dictionary to accumulate rewards for each validator
-            validator_rewards = {}
-
             # Update wallets data
             for txn in mined_block["data"]:
                 # Process wallets
-                await self._process_wallets(mined_block, txn, validator_rewards)
+                await self._process_wallets(mined_block, txn)
 
                 # Handle mint and burn transactions
-                if txn.get("action") == "contract_mint":
+                if txn["action"] in ["contract_mint", "block_reward"]:
                     await self._process_mint(txn)
-                elif txn.get("action") == "contract_burn":
+                elif txn["action"] == "contract_burn":
                     await self._process_burn(txn)
-        
+            
+            # Calculate the total block reward
+            total_transactions = len(mined_block["data"])
+            total_block_reward = await self.calculate_block_reward(total_transactions, mined_block["timestamp"])
+
             # Create a single transaction per validator with the total rewards
-            await self._create_validator_reward(mined_block, validator_rewards)
+            await self._process_validator_reward(mined_block, total_block_reward)
 
             # Notify nodes
             await self.sub_pub_manager.notify_nodes("new_block", [mined_block], None, node_type="FULL")
@@ -474,7 +479,7 @@ class BlockchainManager:
             print(f"Error creating and saving block: {e}")
             return False  # Return False if an exception occurred
 
-    async def _process_wallets(self, mined_block, txn, validator_rewards):
+    async def _process_wallets(self, mined_block, txn):
         try:
             wallet_template = {
                 "tx_count": 0,
@@ -483,7 +488,7 @@ class BlockchainManager:
                 "balances": {}
             }
 
-            genesis_address = self.app_state.config_store["BLOCKCHAIN_CONF"]["genesis_address"]
+            genesis_address = self.app_state.config_store["BLOCKCHAIN_DATA"]["GENESIS_ADDRESS"]
             sender_address = txn["sender"]
             receiver_address = txn["receiver"]
             validator_address = txn["validator"]
@@ -525,25 +530,26 @@ class BlockchainManager:
 
             # Initialize balances if not present
             genesis_wallet["balances"].setdefault(blockchain_symbol, {"balance": "0", "balance_pending": "0"})
-            sender_wallet["balances"].setdefault(blockchain_symbol, {"balance": "0", "balance_pending": "0"})
-            receiver_wallet["balances"].setdefault(blockchain_symbol, {"balance": "0", "balance_pending": "0"})
-
-            sender_wallet["balances"].setdefault(symbol, {"balance": "0", "balance_pending": "0"})
-            receiver_wallet["balances"].setdefault(symbol, {"balance": "0", "balance_pending": "0"})
+            
+            if txn["sender"]:
+                sender_wallet["balances"].setdefault(blockchain_symbol, {"balance": "0", "balance_pending": "0"})
+                sender_wallet["balances"].setdefault(symbol, {"balance": "0", "balance_pending": "0"})
+            
+            if txn["receiver"]:
+                receiver_wallet["balances"].setdefault(blockchain_symbol, {"balance": "0", "balance_pending": "0"})
+                receiver_wallet["balances"].setdefault(symbol, {"balance": "0", "balance_pending": "0"})
 
             # Update sender wallet
             if sender_wallet:
                 try:
-                    if txn["action"] not in ["create_contract", "contract_mint"]:
+                    if txn["action"] not in ["create_contract", "contract_mint", "block_reward"]:
                         sender_wallet["balances"][symbol]["balance_pending"] = str(int(sender_wallet["balances"][symbol]["balance_pending"]) + amount)
 
                     sender_wallet["balances"][blockchain_symbol]["balance_pending"] = str(int(sender_wallet["balances"][blockchain_symbol]["balance_pending"]) + fee)
                     sender_wallet["last_tx_timestamp"] = mined_block["timestamp"]
                     existing_tx = next((tx for tx in sender_wallet["tx_data"] if tx["txid"] == tx_data["txid"]), None)
                     if existing_tx:
-                        sender_wallet["tx_data"][sender_wallet["tx_data"].index(existing_tx)] = tx_data
-                    else:
-                        sender_wallet["tx_data"].append(tx_data)
+                        sender_wallet["tx_data"][sender_wallet["tx_data"].index(existing_tx)]["confirmed"] = tx_data["confirmed"]
 
                     self.app_state.data_store["wallets"][sender_address] = sender_wallet
                     await self.save_blockchain_wallets(sender_address, sender_wallet)
@@ -555,13 +561,10 @@ class BlockchainManager:
                 try:
                     receiver_wallet["balances"][symbol]["balance"] = str(int(receiver_wallet["balances"][symbol]["balance"]) + amount)
                     receiver_wallet["balances"][symbol]["balance_pending"] = str(int(receiver_wallet["balances"][symbol]["balance_pending"]) - amount)
-
                     receiver_wallet["last_tx_timestamp"] = mined_block["timestamp"]
                     existing_tx = next((tx for tx in receiver_wallet["tx_data"] if tx["txid"] == tx_data["txid"]), None)
                     if existing_tx:
-                        receiver_wallet["tx_data"][receiver_wallet["tx_data"].index(existing_tx)] = tx_data
-                    else:
-                        receiver_wallet["tx_data"].append(tx_data)
+                        receiver_wallet["tx_data"][receiver_wallet["tx_data"].index(existing_tx)]["confirmed"] = tx_data["confirmed"]
 
                     self.app_state.data_store["wallets"][receiver_address] = receiver_wallet
                     await self.save_blockchain_wallets(receiver_address, receiver_wallet)
@@ -569,21 +572,18 @@ class BlockchainManager:
                     print(f"Error updating receiver's wallet: {e}")
 
             # Update genesis wallet
-            if genesis_wallet:
+            if genesis_wallet and fee > 0:
                 try:
                     genesis_wallet["balances"][blockchain_symbol]["balance"] = str(int(genesis_wallet["balances"][blockchain_symbol]["balance"]) + fee)
                     genesis_wallet["balances"][blockchain_symbol]["balance_pending"] = str(int(genesis_wallet["balances"][blockchain_symbol]["balance_pending"]) - fee)
-
+                    genesis_wallet["last_tx_timestamp"] = mined_block["timestamp"]
+                    existing_tx = next((tx for tx in genesis_wallet["tx_data"] if tx["txid"] == tx_data["txid"]), None)
+                    if existing_tx:
+                        genesis_wallet["tx_data"][genesis_wallet["tx_data"].index(existing_tx)]["confirmed"] = tx_data["confirmed"]
                     self.app_state.data_store["wallets"][genesis_address] = genesis_wallet
                     await self.save_blockchain_wallets(genesis_address, genesis_wallet)
                 except Exception as e:
                     print(f"Error updating genesis' wallet: {e}")
-
-            # Update validator rewards
-            if validator_address:
-                if validator_address not in validator_rewards:
-                    validator_rewards[validator_address] = 0
-                validator_rewards[validator_address] += int(self.app_state.config_store["BLOCKCHAIN_VALIDATOR_REWARD"])
 
             # Save to cache
             self.app_state.data_has_changed = True
@@ -597,12 +597,80 @@ class BlockchainManager:
         except Exception as e:
             print(f"Error processing wallets: {e}")
             return False  # Error processing wallets
-    
+
+    async def calculate_block_reward(self, total_transactions, block_timestamp):
+        try:
+            base_reward = int(self.app_state.config_store["BLOCKCHAIN_BASE_REWARD"])
+            block_max_size = int(self.app_state.config_store["BLOCKCHAIN_BLOCK_MAX_SIZE"])
+
+            # Initialize current_reward to base_reward (no halving at the start)
+            current_reward = base_reward
+            
+            # Check if halving interval is set
+            halving_interval_seconds = self.app_state.config_store["BLOCKCHAIN_HALVING_INTERVAL"]
+
+            if halving_interval_seconds:
+                # Calculate the current reward based on elapsed time and halving interval
+                halving_interval_seconds = int(halving_interval_seconds)
+                genesis_timestamp = int(self.app_state.config_store["BLOCKCHAIN_DATA"]["GENESIS_TIMESTAMP"])
+
+                # Calculate elapsed time since genesis
+                elapsed_time_seconds = block_timestamp - genesis_timestamp
+
+                # Calculate the number of halvings
+                halvings = elapsed_time_seconds // halving_interval_seconds
+                current_reward = base_reward * (3 / 4) ** halvings
+
+            # Cap transactions per block to block_max_size
+            num_transactions = min(total_transactions, block_max_size)
+
+            # Adjust reward based on the number of transactions
+            max_block_reward = current_reward  # Max reward for a full block
+            reward_per_transaction = max_block_reward / block_max_size
+            total_block_reward = reward_per_transaction * num_transactions
+
+            return total_block_reward
+        except Exception as e:
+            print(f"Error calculating block reward: {e}")
+            return 0  # Return 0 if an exception occurred
+
+    async def _process_validator_reward(self, mined_block, total_block_reward):
+        try:
+            genesis_address = self.app_state.config_store["BLOCKCHAIN_DATA"]["GENESIS_ADDRESS"]
+            genesis_symbol = self.app_state.config_store["BLOCKCHAIN_SYMBOL"]
+            can_mint = self.app_state.config_store['BLOCKCHAIN_CAN_MINT']
+
+            validator_address = mined_block["validator"]
+
+            # Create a single transaction for the validator with the total reward
+            validator_data = {
+                "Rewards for": [txn["hash"] for txn in mined_block["data"]]
+            }
+            if can_mint:
+                payload = {
+                    "validator_address": validator_address,
+                    "amount": str(total_block_reward),
+                    "validator_data": str(validator_data),
+                }
+                await self.genesis_mint(payload)
+            else:
+                payload = {
+                    "sender": genesis_address,
+                    "receiver": validator_address,
+                    "amount": str(total_block_reward),
+                    "data": str(validator_data),
+                    "symbol": genesis_symbol,
+                    "action": "validator_reward"
+                }
+                await self.send_internal_txn(payload)
+        except Exception as e:
+            print(f"Error creating validator reward: {e}")
+            return False  # Error creating validator reward
+
     async def _process_mint(self, txn):
         try:
             contract_hash = txn["contract_hash"]
             amount = int(txn["amount"])
-            receiver_address = txn["receiver"]
 
             # Update contract supply
             self.cursor.execute('''
@@ -620,18 +688,6 @@ class BlockchainManager:
                 ''', (new_supply, int(time.time()), contract_hash))
                 self.conn.commit()
 
-                # Update receiver's wallet
-                receiver_wallet = self.app_state.wallets.get(receiver_address)
-                if receiver_wallet:
-                    symbol = contract[5]
-                    if symbol not in receiver_wallet["balances"]:
-                        receiver_wallet["balances"][symbol] = {"balance": "0", "balance_pending": "0"}
-
-                    receiver_wallet["balances"][symbol]["balance"] = str(int(receiver_wallet["balances"][symbol]["balance"]) + amount)
-                    receiver_wallet["last_tx_timestamp"] = int(time.time())
-                    self.app_state.wallets[receiver_address] = receiver_wallet
-                    self.app_state.data_store["wallets"][receiver_address] = receiver_wallet
-                    await self.save_blockchain_wallets(receiver_address, receiver_wallet)
         except Exception as e:
             print(f"Error processing mint: {e}")
 
@@ -639,7 +695,6 @@ class BlockchainManager:
         try:
             contract_hash = txn["contract_hash"]
             amount = int(txn["amount"])
-            sender_address = txn["sender"]
 
             # Update contract supply
             self.cursor.execute('''
@@ -661,49 +716,14 @@ class BlockchainManager:
                 ''', (new_supply, new_max_supply, int(time.time()), contract_hash))
                 self.conn.commit()
 
-                # Update sender's wallet
-                sender_wallet = self.app_state.wallets.get(sender_address)
-                if sender_wallet:
-                    symbol = contract[5]
-                    if symbol not in sender_wallet["balances"]:
-                        sender_wallet["balances"][symbol] = {"balance": "0", "balance_pending": "0"}
-
-                    sender_wallet["balances"][symbol]["balance"] = str(int(sender_wallet["balances"][symbol]["balance"]) - amount)
-                    sender_wallet["last_tx_timestamp"] = int(time.time())
-                    self.app_state.wallets[sender_address] = sender_wallet
-                    self.app_state.data_store["wallets"][sender_address] = sender_wallet
-                    self.app_state.data_has_changed = True
-                    await self.save_blockchain_wallets(sender_address, sender_wallet)
         except Exception as e:
             print(f"Error processing burn: {e}")
-
-    async def _create_validator_reward(self, mined_block, validator_rewards):
-        try:
-            # Create a single transaction per validator with the total rewards
-            genesis_address = self.app_state.config_store["BLOCKCHAIN_CONF"]["genesis_address"]
-            for validator_address, total_reward in validator_rewards.items():
-                validator_data = {
-                    "Validator reward": [txn["hash"] for txn in mined_block["data"] if txn["validator"] == validator_address]
-                }
-                payload = {
-                    "sender": genesis_address,
-                    "receiver": validator_address,
-                    "amount": str(total_reward),
-                    "data": str(validator_data),  # Convert dictionary to string
-                    "symbol": self.app_state.config_store["BLOCKCHAIN_SYMBOL"],
-                    "action": "validator_reward"
-                }
-                print("add_validator_reward", payload)
-                await self.send_internal_txn(payload)
-        except Exception as e:
-            print(f"Error creating validator reward: {e}")
-            return False  # Error creating validator reward
 
     def adjust_difficulty(self, validation_time):
         try:
             target_time = 5  # Target time per block in seconds
 
-            current_difficulty = self.app_state.config_store["BLOCKCHAIN_CONF"]["difficulty"]
+            current_difficulty = self.app_state.config_store["BLOCKCHAIN_DATA"]["DIFFICULTY"]
 
             if validation_time < target_time:
                 # If mining time is less than the target, increase difficulty proportionally
@@ -760,7 +780,7 @@ class BlockchainManager:
 
             # Blockchain config
             block_max_size = int(self.app_state.config_store["BLOCKCHAIN_BLOCK_MAX_SIZE"])
-            difficulty = self.app_state.config_store["BLOCKCHAIN_CONF"]["difficulty"]
+            difficulty = self.app_state.config_store["BLOCKCHAIN_DATA"]["DIFFICULTY"]
 
             # Convert sender address to bytes
             address_bytes = sender.encode("utf-8")
@@ -812,11 +832,11 @@ class BlockchainManager:
 
     async def update_blockchain_data(self, block, difficulty):
         try:
-            blockchain_data = self.app_state.config_store["BLOCKCHAIN_CONF"]
-            blockchain_data["previous_hash"] = block["hash"]
-            blockchain_data["latest_block"] = block["timestamp"]
-            blockchain_data["validation_time"] = block["validation_time"]
-            blockchain_data["difficulty"] = difficulty
+            blockchain_data = self.app_state.config_store["BLOCKCHAIN_DATA"]
+            blockchain_data["PREVIOUS_HASH"] = block["hash"]
+            blockchain_data["LATEST_BLOCK"] = block["timestamp"]
+            blockchain_data["VALIDATION_TIME"] = block["validation_time"]
+            blockchain_data["DIFFICULTY"] = difficulty
             
             save_config()
         except Exception as e:
@@ -1006,6 +1026,9 @@ class BlockchainManager:
         except Exception as e:
             print(f"Error getting wallet balance: {e}")
             return {}
+    
+    async def get_fee(self, *args, **kwargs):
+        return self.app_state.config_store["BLOCKCHAIN_DATA"]["FEE"]
 
     async def get_blocks(self, options):
         try:
@@ -1185,24 +1208,20 @@ class BlockchainManager:
             contract_hash = txn_data.get("contract_hash", "")
 
             # Retrieve the sender wallet from the cache
-            sender_wallet = self.app_state.wallets.get(sender)
-            if not sender_wallet:
-                sender_wallet = {
-                    "tx_count": 0,
-                    "tx_data": [],
-                    "last_tx_timestamp": "",
-                    "balances": {}
-                }
+            sender_wallet = self.app_state.wallets.get(sender, {
+                "tx_count": 0,
+                "tx_data": [],
+                "last_tx_timestamp": "",
+                "balances": {}
+            })
 
             # Retrieve or initialize the receiver wallet from the cache
-            receiver_wallet = self.app_state.wallets.get(receiver)
-            if not receiver_wallet:
-                receiver_wallet = {
-                    "tx_count": 0,
-                    "tx_data": [],
-                    "last_tx_timestamp": "",
-                    "balances": {}
-                }
+            receiver_wallet = self.app_state.wallets.get(receiver, {
+                "tx_count": 0,
+                "tx_data": [],
+                "last_tx_timestamp": "",
+                "balances": {}
+            })
 
             if symbol not in sender_wallet["balances"]:
                 sender_wallet["balances"][symbol] = {"balance": "0", "balance_pending": "0"}
@@ -1219,7 +1238,7 @@ class BlockchainManager:
             # Calculate the available balance by considering the balance_pending
             balance = int(sender_wallet["balances"][symbol]["balance"])
             balance_pending = int(sender_wallet["balances"][symbol]["balance_pending"])
-        
+
             # Adjust the available balance if balance_pending is negative
             if balance_pending < 0:
                 available_balance = balance + balance_pending
@@ -1240,7 +1259,7 @@ class BlockchainManager:
             sender_wallet["tx_count"] += 1
             sender_wallet["tx_data"].append(transaction)
             sender_wallet["last_tx_timestamp"] = transaction["timestamp"]
-            
+
             # Save the updated sender back to the cache
             self.app_state.wallets[sender] = sender_wallet
             self.app_state.data_store["wallets"][sender] = sender_wallet
@@ -1258,11 +1277,11 @@ class BlockchainManager:
                 # Save the updated receiver back to the cache
                 self.app_state.wallets[receiver] = receiver_wallet
                 self.app_state.data_store["wallets"][receiver] = receiver_wallet
+                await self.save_blockchain_wallets(receiver, receiver_wallet)
 
-            #Save the updated wallets back to sqlite
+            # Save the updated wallets back to SQLite
             self.app_state.data_has_changed = True
             await self.save_blockchain_wallets(receiver, receiver_wallet)
-
         except Exception as e:
             print(f"Error sending internal transaction: {e}")
             return {"error": f"Error sending transaction: {e}"}
@@ -1275,7 +1294,7 @@ class BlockchainManager:
             amount = txn_data["amount"]
             symbol = txn_data["symbol"]
             data = txn_data["data"]
-            fee = txn_data.get("fee", self.app_state.config_store["BLOCKCHAIN_CONF"]["fee"])
+            fee = txn_data.get("fee", self.app_state.config_store["BLOCKCHAIN_DATA"]["FEE"])
             action = txn_data.get("action", "")
             contract_hash = txn_data.get("contract_hash", "")
 
@@ -1325,6 +1344,8 @@ class BlockchainManager:
             if not transaction:
                 return {"error": "Transaction failed"}
 
+            del transaction["block_max_size"]
+
             # If not contract creation, check the symbol balance and update
             if not is_contract_action:
                 # Calculate the available symbol balance excluding pending
@@ -1344,38 +1365,6 @@ class BlockchainManager:
                 sender_wallet["tx_data"].append(transaction)
                 sender_wallet["last_tx_timestamp"] = transaction["timestamp"]
 
-            # Handle fee processing
-            if fee > 0:
-                # Deduct the fee from the sender's balance
-                sender_wallet["balances"][blockchain_symbol]["balance"] = str(mgdb_balance - fee)
-                sender_wallet["balances"][blockchain_symbol]["balance_pending"] = str(mgdb_balance_pending - fee)
-                genesis_address = self.app_state.config_store["BLOCKCHAIN_CONF"]["genesis_address"]
-
-                if self.app_state.config_store["BLOCKCHAIN_CAN_BURN"]:
-                    # If burning is allowed, burn the fee tokens as a separate transaction
-                    genesis_private_key = self.app_state.config_store["BLOCKCHAIN_CONF"]["genesis_private_key"]
-                    burn_data = {
-                        "private_key": genesis_private_key,
-                        "amount": fee,
-                        "action": "contract_burn",
-                        "contract_hash": self.app_state.config_store["BLOCKCHAIN_CONF"]["genesis_contract_hash"],
-                    }
-                    await self.burn(burn_data)
-                else:
-                    # Credit the fee to the genesis wallet's pending balance
-                    genesis_wallet = self.app_state.wallets.get(genesis_address, {
-                        "tx_count": 0,
-                        "tx_data": [],
-                        "last_tx_timestamp": "",
-                        "balances": {}
-                    })
-
-                    genesis_wallet["balances"].setdefault(blockchain_symbol, {"balance": "0", "balance_pending": "0"})
-
-                    genesis_balance_pending = int(genesis_wallet["balances"][blockchain_symbol]["balance_pending"])
-                    genesis_wallet["balances"][blockchain_symbol]["balance_pending"] = str(genesis_balance_pending + fee)
-                    await self.save_blockchain_wallets(genesis_address, genesis_wallet)
-
             # Update the receiver's wallet
             receiver_symbol_balance_pending = int(receiver_wallet["balances"][symbol]["balance_pending"])
             receiver_wallet["balances"][symbol]["balance_pending"] = str(receiver_symbol_balance_pending + amount)
@@ -1394,6 +1383,10 @@ class BlockchainManager:
             self.app_state.data_store["wallets"][receiver] = receiver_wallet
             await self.save_blockchain_wallets(receiver, receiver_wallet)
 
+            # Handle fee processing
+            if fee > 0:
+                await self._process_fee(blockchain_symbol, transaction, fee, sender_wallet)
+
             # Save data cache
             self.app_state.data_has_changed = True
 
@@ -1408,6 +1401,53 @@ class BlockchainManager:
         except Exception as e:
             print(f"Error sending transaction: {e}")
             return {"error": f"Error sending transaction: {e}"}
+    
+    async def _process_fee(self, blockchain_symbol, transaction, fee, sender_wallet):
+        try:
+            # Deduct the fee from the sender's balance
+            sender_wallet["balances"][blockchain_symbol]["balance"] = str(int(sender_wallet["balances"][blockchain_symbol]["balance"]) - fee)
+            sender_wallet["balances"][blockchain_symbol]["balance_pending"] = str(int(sender_wallet["balances"][blockchain_symbol]["balance_pending"]) - fee)
+            genesis_address = self.app_state.config_store["BLOCKCHAIN_DATA"]["GENESIS_ADDRESS"]
+
+            if self.app_state.config_store["BLOCKCHAIN_CAN_BURN"]:
+                # If burning is allowed, burn the fee tokens as a separate transaction
+                genesis_private_key = self.app_state.config_store["BLOCKCHAIN_DATA"]["GENESIS_PRIVATE_KEY"]
+                burn_data = {
+                    "private_key": genesis_private_key,
+                    "amount": fee,
+                    "action": "contract_burn",
+                    "contract_hash": self.app_state.config_store["BLOCKCHAIN_DATA"]["GENESIS_CONTRACT_HASH"],
+                }
+                await self.burn(burn_data)
+            else:
+                # Credit the fee to the genesis wallet's pending balance
+                genesis_wallet = self.app_state.wallets.get(genesis_address, {
+                    "tx_count": 0,
+                    "tx_data": [],
+                    "last_tx_timestamp": "",
+                    "balances": {}
+                })
+
+                genesis_wallet["balances"].setdefault(blockchain_symbol, {"balance": "0", "balance_pending": "0"})
+                genesis_balance_pending = int(genesis_wallet["balances"][blockchain_symbol]["balance_pending"])
+                genesis_wallet["balances"][blockchain_symbol]["balance_pending"] = str(genesis_balance_pending + fee)
+                genesis_wallet["tx_count"] += 1
+                tx_fee_data = transaction.copy()
+                tx_fee_data["receiver"] = genesis_address
+                tx_fee_data["amount"] = fee
+                tx_fee_data["symbol"] = blockchain_symbol
+                tx_fee_data["fee"] = 0
+                tx_fee_data["action"] = "fee"
+                genesis_wallet["tx_data"].append(tx_fee_data)
+                genesis_wallet["last_tx_timestamp"] = transaction["timestamp"]
+
+                # Save the genesis' wallet to the cache and database
+                self.app_state.wallets[genesis_address] = genesis_wallet
+                self.app_state.data_store["wallets"][genesis_address] = genesis_wallet
+                await self.save_blockchain_wallets(genesis_address, genesis_wallet)
+        except Exception as e:
+            print(f"Error processing fee: {e}")
+            return {"error": f"Error processing fee: {e}"}
 
     async def create_contract(self, contract_data):
         try:
@@ -1517,6 +1557,60 @@ class BlockchainManager:
             print(f"Error getting contract: {e}")
             return {"status": "error", "message": str(e)}
 
+    async def genesis_mint(self, mint_data):
+        try:
+            genesis_address = self.app_state.config_store["BLOCKCHAIN_DATA"]["GENESIS_ADDRESS"]
+            genesis_private_key = self.app_state.config_store["BLOCKCHAIN_DATA"]["GENESIS_PRIVATE_KEY"]
+            genesis_contract_hash = self.app_state.config_store["BLOCKCHAIN_DATA"]["GENESIS_CONTRACT_HASH"]
+            genesis_symbol = self.app_state.config_store.get("BLOCKCHAIN_SYMBOL")
+            validator_address = mint_data["validator_address"]
+            validator_data = mint_data["validator_data"]
+            blockchain_decimal = int(self.app_state.config_store["BLOCKCHAIN_DECIMAL"])
+            multiplier = 10 ** blockchain_decimal
+            amount = int(float(mint_data["amount"]) * multiplier)
+            
+            self.cursor.execute('''
+                SELECT * FROM contracts WHERE contract_hash=?
+            ''', (genesis_contract_hash,))
+            contract_data = self.cursor.fetchone()
+
+            if not contract_data:
+                return {"status": "error", "message": "Contract not found"}
+
+            columns = [col[0] for col in self.cursor.description]
+            contract = dict(zip(columns, contract_data))
+
+            # Check if the decoded address matches the contract owner address
+            if genesis_address != contract['owner_address']:
+                return {"status": "error", "message": "Unauthorized mint operation"}
+
+            if not bool(contract['can_mint']):  # can_mint
+                return {"status": "error", "message": "Minting not allowed for this contract"}
+
+            if contract['supply'] + amount > contract['max_supply']:  # supply + amount > max_supply
+                return {"status": "error", "message": "Amount exceeds max supply"}
+
+            # Record the mint transaction
+            mint_txn_data = {
+                "private_key": genesis_private_key,
+                "receiver": validator_address,
+                "amount": str(amount / multiplier),
+                "symbol": genesis_symbol,
+                "data": validator_data,
+                "fee": "0",  # No fee for genesis mint transactions
+                "action": "block_reward",
+                "contract_hash": genesis_contract_hash
+            }
+            mint_txn_response = await self.send_txn(mint_txn_data, is_contract_action=True)
+
+            if "txid" in mint_txn_response:
+                return {"status": "success", "mint_txid": mint_txn_response.get("txid")}
+            else:
+                return {"status": "error", "message": f"Failed to broadcast mint transaction: {mint_txn_response.get("error", "Unknown error")}"}
+        except Exception as e:
+            print(f"Error minting: {e}")
+            return {"status": "error", "message": str(e)}
+
     async def contract_mint(self, mint_data):
         try:
             private_key = mint_data["private_key"]
@@ -1530,13 +1624,13 @@ class BlockchainManager:
             self.cursor.execute('''
                 SELECT * FROM contracts WHERE contract_hash=?
             ''', (contract_hash,))
-            contract_tuple = self.cursor.fetchone()
+            contract_data = self.cursor.fetchone()
 
-            if not contract_tuple:
+            if not contract_data:
                 return {"status": "error", "message": "Contract not found"}
 
             columns = [col[0] for col in self.cursor.description]
-            contract = dict(zip(columns, contract_tuple))
+            contract = dict(zip(columns, contract_data))
 
             # Check if the decoded address matches the contract owner address
             if owner_address != contract['owner_address']:
@@ -1557,7 +1651,7 @@ class BlockchainManager:
                 "amount": str(amount / multiplier),
                 "symbol": symbol,
                 "data": "Mint transaction",
-                "fee": "0",  # No fee for mint transactions
+                "fee": self.app_state.config_store["BLOCKCHAIN_CONTRACT_FEE"],
                 "action": "contract_mint",
                 "contract_hash": contract_hash
             }
@@ -1583,13 +1677,13 @@ class BlockchainManager:
             self.cursor.execute('''
                 SELECT * FROM contracts WHERE contract_hash=?
             ''', (contract_hash,))
-            contract_tuple = self.cursor.fetchone()
+            contract_data = self.cursor.fetchone()
             
-            if not contract_tuple:
+            if not contract_data:
                 return {"status": "error", "message": "Contract not found"}
 
             columns = [col[0] for col in self.cursor.description]
-            contract = dict(zip(columns, contract_tuple))
+            contract = dict(zip(columns, contract_data))
 
             # Check if the decoded address matches the contract owner address
             if owner_address != contract['owner_address']:
@@ -1617,7 +1711,7 @@ class BlockchainManager:
                 "amount": str(amount / multiplier),
                 "symbol": symbol,
                 "data": "Burn transaction",
-                "fee": "0",  # No fee for burn transactions
+                "fee": self.app_state.config_store["BLOCKCHAIN_CONTRACT_FEE"],
                 "action": "contract_burn",
                 "contract_hash": contract_hash
             }

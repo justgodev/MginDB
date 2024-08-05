@@ -32,17 +32,18 @@ config = {
     "BLOCKCHAIN_LOGO": "",  # Blockchain logo
     "BLOCKCHAIN_SYMBOL": "",  # Blockchain symbol
     "BLOCKCHAIN_DECIMAL": "8",  # Blockchain decimal
-    "BLOCKCHAIN_SUPPLY": "",  # Blockchain supply
+    "BLOCKCHAIN_INITIAL_SUPPLY": "",  # Blockchain initial supply
     "BLOCKCHAIN_MAX_SUPPLY": "",  # Blockchain max supply
+    "BLOCKCHAIN_BASE_REWARD": "",  # Blockchain base reward
+    "BLOCKCHAIN_HALVING_INTERVAL": "",  # Blockchain halving reward
     "BLOCKCHAIN_CAN_MINT": False,  # Blockchain can mint
     "BLOCKCHAIN_CAN_BURN": False,  # Blockchain can burn
     "BLOCKCHAIN_SETUP_FEE": "",  # Blockchain setup fee
     "BLOCKCHAIN_CONTRACT_FEE": "5000",  # Blockchain contract fee
-    "BLOCKCHAIN_VALIDATOR_REWARD": "",  # Blockchain validator reward
     "BLOCKCHAIN_BLOCK_MAX_SIZE": "100",  # Blockchain block max size
     "BLOCKCHAIN_BLOCK_AUTO_CREATION_INTERVAL": "120", # Blockchain automatic block creation interval
     "BLOCKCHAIN_SYNC_CHUNKS": "100",  # Blockchain sync chunks
-    "BLOCKCHAIN_CONF": {}  # Blockchain conf
+    "BLOCKCHAIN_DATA": {}  # Blockchain conf
 }
 
 # Write the configuration to a JSON file
