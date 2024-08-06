@@ -1,6 +1,6 @@
 {
     "INSTANCE_UUID": "e80ada5d-d70d-49e5-ae6c-853068d934c0",
-    "HOST": "10.0.0.251",
+    "HOST": "127.0.0.1",
     "PORT": "6446",
     "USERNAME": "",
     "PASSWORD": "",
@@ -14,14 +14,14 @@
     "REPLICATION_TYPE": "MASTER",
     "REPLICATION_MASTER": "",
     "REPLICATION_SLAVES": [
-        "10.0.0.251:6447"
+        "127.0.0.1:6447"
     ],
     "SHARDING_TYPE": "MASTER",
     "SHARDING": "0",
     "SHARDING_BATCH_SIZE": "500",
     "SHARDS": [
         "127.0.0.1",
-        "10.0.0.251"
+        "127.0.0.1"
     ],
     "BLOCKCHAIN": "1",
     "BLOCKCHAIN_TYPE": "MASTER",
@@ -41,5 +41,16 @@
     "BLOCKCHAIN_SYNC_CHUNKS": "100",
     "BLOCKCHAIN_BLOCK_MAX_SIZE": "5",
     "BLOCKCHAIN_BLOCK_AUTO_CREATION_INTERVAL": "120",
-    "BLOCKCHAIN_DATA": {}
+    "BLOCKCHAIN_DATA": {
+        "GENESIS_TIMESTAMP": 1722972205,
+        "GENESIS_ADDRESS": "MoAhvS1fnMmp8ea2KRY8VBTRmz6aQcB8KD",
+        "GENESIS_PRIVATE_KEY": "b88e14b3bd0e03558ca30977909141e0122f1fb4522d1913ea26cc62fdc99794",
+        "GENESIS_CONTRACT_HASH": "0ee7a112622573d5a05da4b5ce18c1ad1dd6761437b3ffdef11d94f6ddcc5da7",
+        "CHAIN_LENGTH": 5,
+        "PREVIOUS_HASH": "0005e98472ca430802a1b73e7b2a7b2f0286f6aedc6c0d4e8b32ef73a626fd2d",
+        "LATEST_BLOCK": 1722974642,
+        "VALIDATION_TIME": 0.16936707496643066,
+        "DIFFICULTY": 3,
+        "FEE": "0.05"
+    }
 }

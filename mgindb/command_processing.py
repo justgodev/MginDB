@@ -116,7 +116,7 @@ class CommandProcessor:
             'GET_CONTRACT': self.blockchain_manager.get_contract,
             'MINT_CONTRACT': self.blockchain_manager.contract_mint,
             'BURN_CONTRACT': self.blockchain_manager.contract_burn,
-            'UPLOAD_FILE': self.upload_manager.save_file,
+            'SAVE_FILE': self.upload_manager.save_file,
             'READ_FILE': self.upload_manager.read_file,
             'NEW_2FA': self.two_factor_manager.generate,
             'VERIFY_2FA': self.two_factor_manager.verify
@@ -125,8 +125,9 @@ class CommandProcessor:
         if command in commands:
             func = commands[command]
             if asyncio.iscoroutinefunction(func):
-                if command == 'UPLOAD_FILE':
+                if command == 'SAVE_FILE':
                     key, data = args.split(' ', 1)
+                    return await func(key, data)
                 elif command in {'SEND_TXN', 'SEND_INTERNAL_TXN', 'CREATE_CONTRACT', 'GET_CONTRACT', 'MINT_CONTRACT', 'BURN_CONTRACT'}:
                     return await func(ujson.loads(args))
                 elif command in {'INCR', 'DECR'}:
@@ -146,7 +147,7 @@ class CommandProcessor:
                     async for chunk in async_gen:
                         await websocket.send(chunk)
                     return None
-                elif command == 'SUBMIT_TXNS_RESULT' or command == 'SUBMIT_BLOCK':
+                elif command in {'SUBMIT_TXNS_RESULT', 'SUBMIT_BLOCK'}:
                     request_id, data = args.split(' ', 1)
                     return await func(request_id, data)
                 elif command == 'GET_BLOCKS' or command == 'GET_TXNS':
@@ -164,7 +165,7 @@ class CommandProcessor:
                 else:
                     return await func(args)
             else:
-                if command == 'UPLOAD_FILE':
+                if command == 'SAVE_FILE':
                     key, data = args.split(' ', 1)
                     return await self.run_in_executor('thread', func, key, data.encode())
                 elif command in {'SEND_TXN', 'SEND_INTERNAL_TXN', 'CREATE_CONTRACT', 'GET_CONTRACT', 'MINT_CONTRACT', 'BURN_CONTRACT'}:

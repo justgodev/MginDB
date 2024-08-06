@@ -106,19 +106,33 @@ class BlockchainManager:
             else:
                 blockchain_data = self.app_state.blockchain
 
-            chunks = list(self.chunk_data(blockchain_data))  # Convert generator to list for debug print
+            # Prepare the configuration data for the first chunk
+            config_data = {
+                "genesis_timestamp": self.app_state.config_store["BLOCKCHAIN_DATA"]["GENESIS_TIMESTAMP"],
+                "genesis_address": self.app_state.config_store["BLOCKCHAIN_DATA"]["GENESIS_ADDRESS"],
+                "genesis_contract_hash": self.app_state.config_store["BLOCKCHAIN_DATA"]["GENESIS_CONTRACT_HASH"]
+            }
+
+            chunks = list(self.chunk_data(config_data, blockchain_data))  # Convert generator to list for debug print
             return chunks
         except Exception as e:
             print(f"Error getting blockchain: {e}")
             return []
 
-    def chunk_data(self, data):
+    def chunk_data(self, config_data, blockchain_data):
         try:
             """
             Chunk the data into smaller pieces for sending via WebSocket.
             """
-            total_chunks = len(data)
-            for i, block in enumerate(data):
+            total_chunks = len(blockchain_data) + 1  # Including the config chunk
+            # Yield the configuration chunk first
+            yield ujson.dumps({
+                "chunk_index": 0,
+                "total_chunks": total_chunks,
+                "config": config_data
+            })
+            # Yield the blockchain data chunks
+            for i, block in enumerate(blockchain_data, start=1):
                 yield ujson.dumps({
                     "chunk_index": i,
                     "total_chunks": total_chunks,
