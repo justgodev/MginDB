@@ -1344,11 +1344,11 @@ class BlockchainManager:
             fee = int(float(fee) * multiplier)
 
             # Calculate the available balance excluding pending
-            mgdb_balance = int(sender_wallet["balances"][blockchain_symbol]["balance"])
-            mgdb_balance_pending = int(sender_wallet["balances"][blockchain_symbol]["balance_pending"])
+            mgx_balance = int(sender_wallet["balances"][blockchain_symbol]["balance"])
+            mgx_balance_pending = int(sender_wallet["balances"][blockchain_symbol]["balance_pending"])
 
             # Check if the sender has sufficient balance for the fee
-            if mgdb_balance < fee:
+            if mgx_balance < fee:
                 return {"error": "Insufficient balance for fee"}
 
             # Create and add the transaction
