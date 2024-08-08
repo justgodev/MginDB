@@ -614,7 +614,7 @@ class BlockchainManager:
 
     async def calculate_block_reward(self, total_transactions, block_timestamp):
         try:
-            base_reward = int(self.app_state.config_store["BLOCKCHAIN_BASE_REWARD"])
+            base_reward = float(self.app_state.config_store["BLOCKCHAIN_BASE_REWARD"])
             block_max_size = int(self.app_state.config_store["BLOCKCHAIN_BLOCK_MAX_SIZE"])
 
             # Initialize current_reward to base_reward (no halving at the start)
