@@ -23,12 +23,12 @@ class WebSocketManager:
     async def start_blockchain_websocket(self):
         print("Starting Blockchain WebSocket to master node...")
         self.blockchain_websocket = await websockets.connect(
-            "wss://master.mgindb.com",
+            "wss://master.mginx.network",
             ping_interval=None,
             ping_timeout=None,
             max_size=None
         )
-        print("Connected to master node at master.mgindb.com")
+        print("Connected to master node at master.mginx.network")
         await self.authenticate_blockchain_websocket()
         asyncio.create_task(self.handle_blockchain_websocket())
 
